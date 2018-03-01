@@ -47,7 +47,7 @@ bool XBOW6X::Connect(std::string port, int baudrate, long timeout) {
 	}
 
 	// look for Xbow by sending ping and waiting for response
-	if (!Ping()){
+	if (!Sync()){
 		std::cout << "Xbow6x not found on port: " << port << std::endl;
 		delete serial_port_;
 		serial_port_ = NULL;
@@ -68,7 +68,7 @@ void XBOW6X::Disconnect() {
 	serial_port_ = NULL;
 }
 
-bool XBOW6X::Ping(int num_attempts) {
+bool XBOW6X::Sync(int num_attempts) {
 	std::string read_data;
 	size_t found_ping_response = string::npos;
 

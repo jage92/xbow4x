@@ -157,7 +157,7 @@ public:
     * 
     * @see XBOW6X::DataCallback
     */
-    bool Ping(int num_attempts=5);
+    bool Sync(int num_attempts=5);
 
    /*!
     * Sets the handler to be called when a new data is received.
