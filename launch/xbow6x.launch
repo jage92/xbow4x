@@ -1,6 +1,8 @@
 <launch>
+  <arg name="serialPort" default="/dev/ttyUSB0"/>
+  
   <node name="xbow6x" pkg="xbow6x" type="xbow6x_node" output="screen" required="true">
-  	<param name="port" value="/dev/ttyUSB0" />
+  	<param name="port" value="$(arg serialPort)"/>
     <param name="baudrate" value="38400" />
   </node>
  </launch>
