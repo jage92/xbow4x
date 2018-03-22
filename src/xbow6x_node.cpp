@@ -10,7 +10,7 @@ string frame_id;
 
 void PublishImuData(const ImuData& data) {
     sensor_msgs::Imu msg;
-    msg.header.stamp.fromSec(data.receive_time);
+    msg.header.stamp = data.receive_time;
     msg.header.frame_id = frame_id;
     msg.angular_velocity.x = data.rollrate;
     msg.angular_velocity.y = data.pitchrate;
@@ -20,10 +20,6 @@ void PublishImuData(const ImuData& data) {
     msg.linear_acceleration.z = data.az;
     msg.orientation.x = 1;
     imu_pub.publish(msg);
-}
-
-double GetTime() {
-    return ros::Time::now().toSec();
 }
 
 int main(int argc, char **argv)
@@ -40,8 +36,8 @@ int main(int argc, char **argv)
   node_handle.param<string>("frame_id", frame_id, string("imu_frame"));
 
   XBOW6X xbow;
-  xbow.set_time_handler(GetTime);
   xbow.set_data_handler(PublishImuData);
+  
   if (xbow.Connect(port_name, baudrate)) {
     ros::spin();
     xbow.Disconnect();

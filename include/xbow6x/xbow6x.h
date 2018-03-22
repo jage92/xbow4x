@@ -55,6 +55,7 @@ using namespace std;
 
 // Serial Headers
 #include "serial/serial.h"
+#include "ros/ros.h"
 
 namespace xbow6x{
 
@@ -75,7 +76,7 @@ union IntsUnion {
 //accelerations and turning rates
 struct ImuData {
     int datatype; //1 for accels and turning rates, 2 for delta v's and delta thetas.
-    double receive_time;
+    ros::Time receive_time;
     double ax; //1:g's 2:m/s
     double ay; //1:g's 2:m/s
     double az; //1:g's 2:m/s
@@ -114,10 +115,6 @@ typedef boost::function<void(const std::string&)> LoggingCallback;
  * @see XBOW6X::setDataHandler
  */
 typedef boost::function<void(const xbow6x::ImuData&)> DataCallback;
-
-
-typedef boost::function<double()> GetTimeCallback;
-
 
 
 class XBOW6X{
@@ -173,11 +170,7 @@ public:
     void set_data_handler(DataCallback data_handler) {
         this->data_handler_ = data_handler;
     }
-
-    void set_time_handler(GetTimeCallback time_handler) {
-        this->time_handler_ = time_handler;
-    }
-
+    
     // NOT IMPLEMENTED YET
     //bool SetOutputRate(unsigned short rate); //!< set rate to 0, 1, 2, 5, 10, 20, 25, 50Hz
 
@@ -240,7 +233,6 @@ private:
     boost::shared_ptr<boost::thread> read_thread_ptr_;  
     bool reading_status_;  //!< True if the read thread is running, false otherwise.
     DataCallback data_handler_; //!< Function pointer to callback function for parsed data
-    GetTimeCallback time_handler_; //!< Function pointer to callback function for timestamping
 };
 
 }; // end namespace

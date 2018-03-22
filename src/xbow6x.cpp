@@ -1,8 +1,8 @@
-
 #include "xbow6x/xbow6x.h"
 using namespace xbow6x;
 
 #define WIN32_LEAN_AND_MEAN 
+#define _USE_MATH_DEFINES
 #include "boost/date_time/posix_time/posix_time.hpp"
 
 void DefaultProcessData(const ImuData& data) {
@@ -18,17 +18,10 @@ void DefaultProcessData(const ImuData& data) {
     std::cout << std::endl;
 }
 
-double DefaultGetTime() {
-	boost::posix_time::ptime present_time(boost::posix_time::microsec_clock::universal_time());
-	boost::posix_time::time_duration duration(present_time.time_of_day());
-	return duration.total_seconds();
-}
-
 XBOW6X::XBOW6X()
 {	
 	serial_port_ = NULL;
 	data_handler_ = DefaultProcessData;
-	time_handler_ = DefaultGetTime;
 	read_size_ = 18;
 	reading_status_ = false;
 }
@@ -127,7 +120,7 @@ void XBOW6X::ReadSerialPort() {
 	while (reading_status_) {
 		len = serial_port_->read(buffer, read_size_);
         // time stamp
-		imu_data_.receive_time = time_handler_();
+		imu_data_.receive_time = ros::Time::now();
 //         std::cout << "Read data: ";
 //         for(i = 0; i < len; i++)
 //             std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)buffer[i] << " ";
@@ -203,37 +196,37 @@ void XBOW6X::Parse(unsigned char *packet) {
         imu_data_.rollrate = ((packet[1] << 8) + packet[2]);
     else
         imu_data_.rollrate = -32768 + ((packet[1] & 0x7F) << 8) + packet[2];
-    imu_data_.rollrate *= 1.5*150.0/32768.0; // Degrees/sec
+    imu_data_.rollrate *= 1.5*150.0/32768.0*M_PI/180; // rad/sec
 
     if ((packet[3] & 0x80) == 0)
         imu_data_.pitchrate = ((packet[3] << 8) + packet[4]);
     else
         imu_data_.pitchrate = -32768 +((packet[3] & 0x7F) << 8) + packet[4];
-    imu_data_.pitchrate *= 1.5*150.0/32768.0; // Degrees/sec
+    imu_data_.pitchrate *= 1.5*150.0/32768.0*M_PI/180; // rad/sec
 
     if ((packet[5] & 0x80) == 0)
        imu_data_.yawrate = ((packet[5] << 8) + packet[6]);
     else
        imu_data_.yawrate = -32768 + ((packet[5] & 0x7F) << 8) + packet[6];
-    imu_data_.yawrate *= 1.5*150.0/32768.0; // Degrees/sec
+    imu_data_.yawrate *= 1.5*150.0/32768.0*M_PI/180; // rad/sec
     
     if ((packet[7] & 0x80) == 0)
          imu_data_.ax = ((packet[7] << 8) + packet[8]);
     else
          imu_data_.ax = -32768 +((packet[7] & 0x7F) << 8)+packet[8];
-    imu_data_.ax *= 1.5*10.0/32768.0; // G's
+    imu_data_.ax *= 1.5*10.0/32768.0*9.81; // m^2/s
 
     if ((packet[9] & 0x80) == 0)
          imu_data_.ay = ((packet[9] << 8) + packet[10]);
     else
          imu_data_.ay = -32768 + ((packet[9] & 0x7F) << 8)+packet[10];
-    imu_data_.ay *= 1.5*10.0/32768.0; // G's
+    imu_data_.ay *= 1.5*10.0/32768.0*9.81; // m^2/s
 
     if ((packet[11] & 0x80) == 0)
          imu_data_.az = ((packet[11] << 8) + packet[12]);
     else
          imu_data_.az = -32768 + ((packet[11] & 0x7F) << 8)+packet[12];
-    imu_data_.az *= 1.5*10.0/32768.0; // G's
+    imu_data_.az *= 1.5*10.0/32768.0*9.81; // m^2/s
     
 //     m_rawTemp = ((packet[13] <<8) + packet[14]);
 //     m_rawTemp = (m_rawTemp*5.0/4096.0 - 1.375)* 44.4; // Convert to celcuis.
