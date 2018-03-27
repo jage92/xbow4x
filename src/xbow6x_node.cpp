@@ -1,5 +1,6 @@
 #include "ros/ros.h"
 #include "sensor_msgs/Imu.h"
+#include <std_msgs/Float64.h>
 
 #include "xbow6x/xbow6x.h"
 using namespace xbow6x;
@@ -7,9 +8,9 @@ using std::string;
 
 ros::Publisher imu_pub;
 string frame_id;
+sensor_msgs::Imu msg;
 
 void PublishImuData(const ImuData& data) {
-    sensor_msgs::Imu msg;
     msg.header.stamp = data.receive_time;
     msg.header.frame_id = frame_id;
     msg.angular_velocity.x = data.rollrate;
@@ -31,10 +32,30 @@ int main(int argc, char **argv)
 
   string port_name;
   node_handle.param("port", port_name, string("/dev/ttyUSB0"));
+  
   int baudrate;
   node_handle.param<int>("baudrate", baudrate, 38400);
+  
   node_handle.param<string>("frame_id", frame_id, string("imu_frame"));
-
+  
+  std::vector<double> orientation_cov;
+  node_handle.getParam("orientation_cov", orientation_cov);
+  for(int i = 0; i < 9; i++) {
+    msg.orientation_covariance[i] = orientation_cov[i];
+  }
+  
+  std::vector<double> ang_vel_cov;
+  node_handle.getParam("ang_vel_cov", ang_vel_cov);
+  for(int i = 0; i < 9; i++) {
+    msg.angular_velocity_covariance[i] = ang_vel_cov[i];
+  }
+  
+  std::vector<double> lin_acc_cov;
+  node_handle.getParam("lin_acc_cov", lin_acc_cov);
+  for(int i = 0; i < 9; i++) {
+    msg.linear_acceleration_covariance[i] = lin_acc_cov[i];
+  }
+  
   XBOW6X xbow;
   xbow.set_data_handler(PublishImuData);
   
