@@ -1,4 +1,5 @@
 <launch>
+  <arg name="ns" default=""/>
   <arg name="serialPort" default="/dev/ttyUSB0"/>
   
   <node name="xbow6x" pkg="xbow6x" type="xbow6x_node" output="screen" required="true">
