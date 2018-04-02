@@ -9,16 +9,18 @@ using std::string;
 ros::Publisher imu_pub;
 string frame_id;
 sensor_msgs::Imu msg;
+std::vector<double> ang_vel_mean;
+std::vector<double> lin_acc_mean;
 
 void PublishImuData(const ImuData& data) {
     msg.header.stamp = data.receive_time;
     msg.header.frame_id = frame_id;
-    msg.angular_velocity.x = data.rollrate;
-    msg.angular_velocity.y = data.pitchrate;
-    msg.angular_velocity.z = data.yawrate;
-    msg.linear_acceleration.x = data.ax;
-    msg.linear_acceleration.y = data.ay;
-    msg.linear_acceleration.z = data.az;
+    msg.angular_velocity.x = data.rollrate - ang_vel_mean[0];
+    msg.angular_velocity.y = data.pitchrate - ang_vel_mean[1];
+    msg.angular_velocity.z = data.yawrate - ang_vel_mean[2];
+    msg.linear_acceleration.x = data.ax - lin_acc_mean[0];
+    msg.linear_acceleration.y = data.ay - lin_acc_mean[1];
+    msg.linear_acceleration.z = data.az - lin_acc_mean[2];
     msg.orientation.x = 1;
     imu_pub.publish(msg);
 }
@@ -37,6 +39,10 @@ int main(int argc, char **argv)
   node_handle.param<int>("baudrate", baudrate, 38400);
   
   node_handle.param<string>("frame_id", frame_id, string("imu_frame"));
+  
+  node_handle.getParam("ang_vel_mean", ang_vel_mean);
+
+  node_handle.getParam("lin_acc_mean", lin_acc_mean);
   
   std::vector<double> orientation_cov;
   node_handle.getParam("orientation_cov", orientation_cov);
