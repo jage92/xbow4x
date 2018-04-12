@@ -1,8 +1,8 @@
 # Angular velocity and linear acceleration means
 
-ang_vel_mean: [ -0.035059185563458 0.087375038034032  0.065801811159180]
+ang_vel_mean: [ -0.035059185563458, 0.087375038034032,  0.065801811159180]
 
-lin_acc_mean: [ -0.279279868865320 -0.712468864474146 0.104990516044884]
+lin_acc_mean: [ -0.279279868865320, -0.712468864474146, 0.104990516044884]
 
 # Orientation, angular velocity and linear acceleration covariance matrices
 
