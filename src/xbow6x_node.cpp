@@ -38,7 +38,7 @@ int main(int argc, char **argv)
   int baudrate;
   node_handle.param<int>("baudrate", baudrate, 38400);
   
-  node_handle.param<string>("frame_id", frame_id, string("imu_frame"));
+  node_handle.param<string>("frame_id", frame_id, string("cbimu_frame"));
   
   node_handle.getParam("ang_vel_mean", ang_vel_mean);
 

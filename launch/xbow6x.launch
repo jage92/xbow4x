@@ -1,10 +1,12 @@
 <launch>
   <arg name="ns" default=""/>
   <arg name="serialPort" default="/dev/ttyUSB0"/>
+  <arg name="frame_id" default="cbimu_frame"/>
   
-  <node name="xbow6x" pkg="xbow6x" type="xbow6x_node" output="screen" required="true">
+  <node ns="$(arg ns)" name="xbow6x_node" pkg="xbow6x" type="xbow6x_node" output="screen" required="true">
   	<param name="port" value="$(arg serialPort)"/>
     <param name="baudrate" value="38400" />
+    <param name="frame_id" value="$(arg frame_id)" />
     <rosparam command="load" file="$(find xbow6x)/params/imu_params.yaml" />
   </node>
  </launch>
