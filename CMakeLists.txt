@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   sensor_msgs
   serial
+  tf
 )
 
 ## System dependencies are found with CMake's conventions
@@ -25,7 +26,7 @@ find_package(Boost REQUIRED COMPONENTS thread system)
 catkin_package(
  INCLUDE_DIRS include
  LIBRARIES xbow6x
- CATKIN_DEPENDS roscpp sensor_msgs serial
+ CATKIN_DEPENDS roscpp sensor_msgs serial tf
  # DEPENDS system_lib
 )
 

@@ -1,5 +1,5 @@
 <launch>
-  <arg name="ns" default=""/>
+  <arg name="ns" default="xbow"/>
   <arg name="serialPort" default="/dev/ttyUSB0"/>
   <arg name="frame_id" default="cbimu_frame"/>
   

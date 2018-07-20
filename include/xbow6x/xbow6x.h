@@ -29,7 +29,7 @@
  *
  * \section DESCRIPTION
  *
- * This provides an interface for the Crossbow DMU-6X-003 inertial measurement unit.
+ * This provides an interface for the Crossbow AHRS400CC-100 inertial measurement unit.
  * 
  * This library depends on CMake-2.4.6 or later: http://www.cmake.org/
  * This library depends on Serial: https://github.com/wjwwood/serial
@@ -53,12 +53,13 @@ using namespace std;
 #include <boost/thread.hpp>
 #include <boost/bind.hpp>
 
-// Serial Headers
+// Serial Header
 #include "serial/serial.h"
+
+// ROS Header
 #include "ros/ros.h"
 
 namespace xbow6x{
-
 
 union ShortsUnion {
     signed short ssdata;
@@ -77,17 +78,20 @@ union IntsUnion {
 struct ImuData {
     int datatype; //1 for accels and turning rates, 2 for delta v's and delta thetas.
     ros::Time receive_time;
+    double roll; //1:rad 2:rad
+    double pitch; //1:rad 2:rad
+    double yaw; //1:rad 2:rad
     double ax; //1:g's 2:m/s
     double ay; //1:g's 2:m/s
     double az; //1:g's 2:m/s
     double rollrate; //1:rad/s 2:rad
     double pitchrate; //1:rad/s 2:rad
     double yawrate; //1:rad/s 2:rad
-    double xtemp; //degC
-    double ytemp; //degC
-    double ztemp; //degC
+    double xmag; //gauss
+    double ymag; //gauss
+    double zmag; //gauss
     double boardtemp; //degC
-    unsigned short counter; //packets
+    unsigned short counter; //16-bit counter (timer)
     unsigned short bitstatus;
 };
 
@@ -179,7 +183,7 @@ private:
    /*!
     * Starts a thread to continuously read from the serial port.
     * 
-    * Starts a thread that runs 'ReadSerialPort' which constatly reads
+    * Starts a thread that runs 'ReadSerialPort' which constantly reads
     * from the serial port.  When valid data is received, parse and then
     *  the data callback functions are called.
     * 

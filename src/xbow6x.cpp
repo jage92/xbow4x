@@ -3,6 +3,10 @@ using namespace xbow6x;
 
 #define WIN32_LEAN_AND_MEAN 
 #define _USE_MATH_DEFINES
+
+#define AHRS_ANGLE_MODE_PACKET_SIZE 30
+#define AHRS_SCALED_MODE_PACKET_SIZE 24
+
 #include "boost/date_time/posix_time/posix_time.hpp"
 
 void DefaultProcessData(const ImuData& data) {
@@ -22,7 +26,7 @@ XBOW6X::XBOW6X()
 {	
 	serial_port_ = NULL;
 	data_handler_ = DefaultProcessData;
-	read_size_ = 18;
+	read_size_ = AHRS_ANGLE_MODE_PACKET_SIZE;
 	reading_status_ = false;
 }
 
@@ -78,18 +82,17 @@ bool XBOW6X::Sync(int num_attempts) {
 		if (found_ping_response != string::npos) {
             found_ping_response = string::npos;
             std::cout << "DMU good reply to reset command: " << read_data << std::endl;
-            // ask the DMU for scaled units mode.
-            serial_port_->write("c");
+            // ask the DMU for angle mode.
+            serial_port_->write("a");
             // wait for response
-            serial_port_->read(read_data,1000);
-            
+            serial_port_->read(read_data,1000);            
             // see if we got a ping response or a timeout
-            found_ping_response = read_data.find("C");
+            found_ping_response = read_data.find("A");
             if (found_ping_response != string::npos) {
-                std::cout << "DMU good reply to scaled units command: " << read_data << std::endl;
+                std::cout << "DMU good reply to angle mode command: " << read_data << std::endl;
                 return true;
             }
-            std::cout << "DMU bad reply to scaled units command: " << read_data << std::endl;
+            std::cout << "DMU bad reply to angle mode command: " << read_data << std::endl;
 		}
 	}
 
@@ -167,14 +170,14 @@ void XBOW6X::Resync() {
         // if 0xFF found
 		if (found != string::npos){
 			sum = 0;
-			size_t len = serial_port_->read(data, 17);
+			size_t len = serial_port_->read(data, read_size_-1);
             // compute checksum
-            for (int i = 0; i < 16; i++) {
+            for (int i = 0; i < read_size_-2; i++) {
                 sum += (int)data[i];
             }
             sum = sum % 256;
             
-			if (sum == (int)data[16] && len == 17) {
+			if (sum == (int)data[read_size_-2] && len == read_size_-1) {
 				synced = true;
 				break;
 			}
@@ -193,43 +196,81 @@ void XBOW6X::Parse(unsigned char *packet) {
     // We're OK and actually have a good packet /w good checksum,
     // decode it, convert the units and update state:
     if ((packet[1] & 0x80) == 0)
-        imu_data_.rollrate = ((packet[1] << 8) + packet[2]);
+        imu_data_.roll = ((packet[1] << 8) + packet[2]);
     else
-        imu_data_.rollrate = -32768 + ((packet[1] & 0x7F) << 8) + packet[2];
-    imu_data_.rollrate *= 1.5*150.0/32768.0*M_PI/180; // rad/sec
+        imu_data_.roll = -32768 + ((packet[1] & 0x7F) << 8) + packet[2];
+    imu_data_.roll *= M_PI/32768.0; // rad
 
     if ((packet[3] & 0x80) == 0)
-        imu_data_.pitchrate = ((packet[3] << 8) + packet[4]);
+        imu_data_.pitch = ((packet[3] << 8) + packet[4]);
     else
-        imu_data_.pitchrate = -32768 +((packet[3] & 0x7F) << 8) + packet[4];
-    imu_data_.pitchrate *= 1.5*150.0/32768.0*M_PI/180; // rad/sec
+        imu_data_.pitch = -32768 +((packet[3] & 0x7F) << 8) + packet[4];
+    imu_data_.pitch *= M_PI/32768.0; // rad
 
     if ((packet[5] & 0x80) == 0)
-       imu_data_.yawrate = ((packet[5] << 8) + packet[6]);
+       imu_data_.yaw = ((packet[5] << 8) + packet[6]);
     else
-       imu_data_.yawrate = -32768 + ((packet[5] & 0x7F) << 8) + packet[6];
-    imu_data_.yawrate *= 1.5*150.0/32768.0*M_PI/180; // rad/sec
-    
+       imu_data_.yaw = -32768 + ((packet[5] & 0x7F) << 8) + packet[6];
+    imu_data_.yaw *= M_PI/32768.0; // rad
+
     if ((packet[7] & 0x80) == 0)
-         imu_data_.ax = ((packet[7] << 8) + packet[8]);
+        imu_data_.rollrate = ((packet[7] << 8) + packet[8]);
     else
-         imu_data_.ax = -32768 +((packet[7] & 0x7F) << 8)+packet[8];
-    imu_data_.ax *= 1.5*10.0/32768.0*9.81; // m^2/s
+        imu_data_.rollrate = -32768 + ((packet[7] & 0x7F) << 8) + packet[8];
+    imu_data_.rollrate *= 1.5*100.0/32768.0*M_PI/180; // rad/sec
 
     if ((packet[9] & 0x80) == 0)
-         imu_data_.ay = ((packet[9] << 8) + packet[10]);
+        imu_data_.pitchrate = ((packet[9] << 8) + packet[10]);
     else
-         imu_data_.ay = -32768 + ((packet[9] & 0x7F) << 8)+packet[10];
-    imu_data_.ay *= 1.5*10.0/32768.0*9.81; // m^2/s
+        imu_data_.pitchrate = -32768 +((packet[9] & 0x7F) << 8) + packet[10];
+    imu_data_.pitchrate *= 1.5*100.0/32768.0*M_PI/180; // rad/sec
 
     if ((packet[11] & 0x80) == 0)
-         imu_data_.az = ((packet[11] << 8) + packet[12]);
+       imu_data_.yawrate = ((packet[11] << 8) + packet[12]);
     else
-         imu_data_.az = -32768 + ((packet[11] & 0x7F) << 8)+packet[12];
-    imu_data_.az *= 1.5*10.0/32768.0*9.81; // m^2/s
+       imu_data_.yawrate = -32768 + ((packet[11] & 0x7F) << 8) + packet[12];
+    imu_data_.yawrate *= 1.5*100.0/32768.0*M_PI/180; // rad/sec
     
-//     m_rawTemp = ((packet[13] <<8) + packet[14]);
-//     m_rawTemp = (m_rawTemp*5.0/4096.0 - 1.375)* 44.4; // Convert to celcuis.
+    if ((packet[13] & 0x80) == 0)
+         imu_data_.ax = ((packet[13] << 8) + packet[14]);
+    else
+         imu_data_.ax = -32768 +((packet[13] & 0x7F) << 8)+packet[14];
+    imu_data_.ax *= 1.5*2.0/32768.0*9.81; // m^2/s
+
+    if ((packet[15] & 0x80) == 0)
+         imu_data_.ay = ((packet[15] << 8) + packet[16]);
+    else
+         imu_data_.ay = -32768 + ((packet[15] & 0x7F) << 8)+packet[16];
+    imu_data_.ay *= 1.5*2.0/32768.0*9.81; // m^2/s
+
+    if ((packet[17] & 0x80) == 0)
+         imu_data_.az = ((packet[17] << 8) + packet[18]);
+    else
+         imu_data_.az = -32768 + ((packet[17] & 0x7F) << 8)+packet[18];
+    imu_data_.az *= 1.5*2.0/32768.0*9.81; // m^2/s
+
+    if ((packet[19] & 0x80) == 0)
+         imu_data_.xmag = ((packet[19] << 8) + packet[20]);
+    else
+         imu_data_.xmag = -32768 +((packet[19] & 0x7F) << 8)+packet[20];
+    imu_data_.xmag *= 1.25*1.5/32768.0; // gauss
+
+    if ((packet[21] & 0x80) == 0)
+         imu_data_.ymag = ((packet[21] << 8) + packet[22]);
+    else
+         imu_data_.ymag = -32768 +((packet[21] & 0x7F) << 8)+packet[22];
+    imu_data_.ymag *= 1.25*1.5/32768.0; // gauss
+
+    if ((packet[23] & 0x80) == 0)
+         imu_data_.zmag = ((packet[23] << 8) + packet[24]);
+    else
+         imu_data_.zmag = -32768 +((packet[23] & 0x7F) << 8)+packet[24];
+    imu_data_.zmag *= 1.25*1.5/32768.0; // gauss
+
+    imu_data_.boardtemp = (packet[25] <<8) + packet[26];
+    imu_data_.boardtemp = (imu_data_.boardtemp*5.0/4096.0-1.375)*44.4;
+
+    imu_data_.counter = (packet[27] <<8) + packet[28];
 
     // call callback with data
     if (data_handler_ != NULL)

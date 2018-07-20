@@ -1,18 +1,24 @@
 #include "ros/ros.h"
 #include "sensor_msgs/Imu.h"
+#include "sensor_msgs/MagneticField.h"
 #include <std_msgs/Float64.h>
+#include <tf/tf.h>
 
 #include "xbow6x/xbow6x.h"
 using namespace xbow6x;
 using std::string;
 
 ros::Publisher imu_pub;
+ros::Publisher mag_pub;
 string frame_id;
 sensor_msgs::Imu msg;
+sensor_msgs::MagneticField msgmag;
+tf::Quaternion q, q_rot;
 std::vector<double> ang_vel_mean;
 std::vector<double> lin_acc_mean;
 
-void PublishImuData(const ImuData& data) {
+    
+void PublishImuData(const ImuData& data) {    
     msg.header.stamp = data.receive_time;
     msg.header.frame_id = frame_id;
     msg.angular_velocity.x = data.rollrate - ang_vel_mean[0];
@@ -21,16 +27,29 @@ void PublishImuData(const ImuData& data) {
     msg.linear_acceleration.x = data.ax - lin_acc_mean[0];
     msg.linear_acceleration.y = data.ay - lin_acc_mean[1];
     msg.linear_acceleration.z = data.az - lin_acc_mean[2];
-    msg.orientation.x = 1;
+    q.setRPY(data.roll,data.pitch,data.yaw);
+    //q = tf::createQuaternionFromRPY(data.roll,data.pitch,data.yaw);
+    tf::Matrix3x3(-1,0,0,
+		 0,1,0,
+		 0,0,-1).getRotation(q_rot);
+    quaternionTFToMsg(q_rot*q, msg.orientation);
+    msgmag.header.stamp = data.receive_time;
+    msgmag.header.frame_id = frame_id;
+    msgmag.magnetic_field.x = data.xmag;
+    msgmag.magnetic_field.y = data.ymag;
+    msgmag.magnetic_field.z = data.zmag;
+
     imu_pub.publish(msg);
+    mag_pub.publish(msgmag);
 }
 
 int main(int argc, char **argv)
-{
+{ 
   ros::init(argc, argv, "xbow6x_node");
   ros::NodeHandle node_handle("~");
 
   imu_pub = node_handle.advertise<sensor_msgs::Imu>("imu/data_raw", 1);
+  mag_pub = node_handle.advertise<sensor_msgs::MagneticField>("imu/mag", 1);
 
   string port_name;
   node_handle.param("port", port_name, string("/dev/ttyUSB0"));
