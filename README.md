@@ -1,5 +1,5 @@
 # xbow6x
-Interface library for a Crossbow DMU-6X-003
+Interface library for a Crossbow AHRS400CC
 
 This interface is heavily based on David Hodo interface library for [Crossbow IMU440](https://github.com/GAVLab/xbow440) and also in Mobility software developed by Robert T Pack, Steve Clark, Mike Davis and Tyson D. Sawyer for Real World Interface Inc.
 
@@ -9,7 +9,7 @@ Tested on ROS Kinetic.
 
 ## Getting Started
 
-Communication with Crossbow DMU-6X-003 is done through RS-232, so you will need a compatible serial adaptor.
+Communication with Crossbow AHRS400CC is done through RS-232, so you will need a compatible serial adaptor.
 
 Clone xbow6x package to your catkin workspace and compile it.
 
@@ -24,4 +24,3 @@ Give the following permissions to your serial port by running:
 sudo chmod 666 /dev/ttyUSB1
 ```
 As a permanent alternative it is possible to set udev rules for your serial adaptor.
-
