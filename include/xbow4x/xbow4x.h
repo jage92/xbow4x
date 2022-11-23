@@ -1,5 +1,5 @@
 /*!
- * \file include/xbow6x.h
+ * \file include/xbow4x.h
  * \author David Hodo <david.hodo@gmail.com>
  * \version 0.1
  *
@@ -37,8 +37,8 @@
  */
 
 
-#ifndef XBOW6X_H
-#define XBOW6X_H
+#ifndef XBOW4X_H
+#define XBOW4X_H
 
 
 #include <string>
@@ -46,6 +46,7 @@
 #include <iostream>
 #include <iomanip>
 #include <queue>
+#include <string.h>
 using namespace std;
 
 // Boost Headers
@@ -57,9 +58,12 @@ using namespace std;
 #include "serial/serial.h"
 
 // ROS Header
-#include "ros/ros.h"
+#include <ros/ros.h>
 
-namespace xbow6x{
+namespace xbow4x{
+
+enum class MeasurementType{None,AngleMode='a',ScaledMode='c',VoltageMode='r'};
+enum class MessageMode{None,Continous='C',Poll='P'};
 
 union ShortsUnion {
     signed short ssdata;
@@ -113,23 +117,23 @@ typedef boost::function<void(const std::string&)> LoggingCallback;
 /*!
  * This function type describes the prototype for the data callback.
  * 
- * The function takes a xbow6x::imuData reference and returns nothing.  It is 
+ * The function takes a xbow4x::imuData reference and returns nothing.  It is 
  * called from the library when new data arrives and is parsed.
  * 
- * @see XBOW6X::setDataHandler
+ * @see XBOW4X::setDataHandler
  */
-typedef boost::function<void(const xbow6x::ImuData&)> DataCallback;
+typedef boost::function<void(const xbow4x::ImuData&)> DataCallback;
 
 
-class XBOW6X{
+class XBOW4X{
 public:
 	
-	XBOW6X();
+	XBOW4X();
 
-	~XBOW6X(){};
+	~XBOW4X(){};
 	
     /*!
-     * Connects to the XBOW6X IMU given a serial port.
+     * Connects to the XBOW4X IMU given a serial port.
      * 
      * @param port Defines which serial port to connect to in serial mode.
      * Examples: Linux - "/dev/ttyS0" Windows - "COM1"
@@ -137,28 +141,12 @@ public:
      * @throws ConnectionFailedException connection attempt failed.
      * @throws UnknownErrorCodeException unknown error code returned.
      */
-    bool Connect(std::string port, int baudrate=115200, long timeout=50);
+    bool connect(std::string port, int baudrate=115200, long timeout=50);
 
    /*!
     * Disconnects from the serial port
     */
-    void Disconnect();
-
-
-   /*!
-    * Pings the IMU to determine if it is properly connected
-    * 
-    * This method sends a ping to the IMU and waits for a response.
-    * 
-    * @param num_attempts The number of times to ping the device
-    * before giving up
-    * @param timeout The time in milliseconds to wait for each reponse
-    *
-    * @return True if the IMU was found, false if it was not.
-    * 
-    * @see XBOW6X::DataCallback
-    */
-    bool Sync(int num_attempts=5);
+    void disconnect();
 
    /*!
     * Sets the handler to be called when a new data is received.
@@ -169,14 +157,43 @@ public:
     * \param default_handler A function pointer to the callback to handle 
     * parsed IMU data.
     * 
-    * \see XBOW6X::DataCallback
+    * \see XBOW4X::DataCallback
     */
     void set_data_handler(DataCallback data_handler) {
         this->data_handler_ = data_handler;
     }
     
-    // NOT IMPLEMENTED YET
-    //bool SetOutputRate(unsigned short rate); //!< set rate to 0, 1, 2, 5, 10, 20, 25, 50Hz
+    /*!
+     * Send a command to the IMU
+     * Commands in the Crossbow documentation
+     *
+     * \param command string of a one character that contains the command to be send
+     * \param returnMessage message returned to show to the user
+     */
+    int sendCommand(u_int8_t command, string &returnMessage);
+
+    /*!
+     * Send a command to the IMU to calibrate the magnetometer
+     * Commands in the Crossbow documentation
+     *
+     * \param command string of a one character that contains the command to be send
+     * \param returnMessage message returned to show to the user
+     */
+    int calibrateCommand(u_int8_t command, string &returnMessage);
+
+
+    /*!
+     * Send a command to the IMU to calibrate the magnetometer
+     * Commands in the Crossbow documentation
+     *
+     * \param command string of a one character that contains the command to be send
+     * \param returnMessage message returned to show to the user
+     */
+    int setBaudrate(u_int32_t baudrate, string &returnMessage);
+
+    MeasurementType getMeasurementType() const;
+
+    MessageMode getMessageMode() const;
 
 private:
 
@@ -187,44 +204,70 @@ private:
     * from the serial port.  When valid data is received, parse and then
     *  the data callback functions are called.
     * 
-    * @see XBOW6X::DataCallback, XBOW6X::XBOW6X::ReadSerialPort, XBOW6X::XBOW6X::StopReading
+    * @see XBOW4X::DataCallback, XBOW4X::XBOW4X::ReadSerialPort, XBOW4X::XBOW4X::StopReading
     */
-    void StartReading();
+    bool startContinuousReading();
 
    /*!
     * Starts the thread that reads from the serial port
     * 
-    * @see XBOW6X::XBOW6X::ReadSerialPort, XBOW6X::XBOW6X::StartReading
+    * @see XBOW4X::XBOW4X::ReadSerialPort, XBOW4X::XBOW4X::StartReading
     */
-    void StopReading();
+    void stopContinousReading();
 
+    /*!
+     * Pings the IMU to determine if it is properly connected
+     *
+     * This method sends a ping to the IMU and waits for a response.
+     *
+     * @param num_attempts The number of times to ping the device
+     * before giving up
+     * @param timeout The time in milliseconds to wait for each reponse
+     *
+     * @return True if the IMU was found, false if it was not.
+     *
+     * @see XBOW4X::DataCallback
+     */
+//     bool sync(int num_attempts=5);
    /*!
     * Method run in a seperate thread that continuously reads from the
     * serial port.  When a complete packet is received, the parse 
     * method is called to process the data
     * 
-    * @see XBOW6X::XBOW6X::Parse, XBOW6X::XBOW6X::StartReading, XBOW6X::XBOW6X::StopReading
+    * @see XBOW4X::XBOW4X::Parse, XBOW4X::XBOW4X::StartReading, XBOW4X::XBOW4X::StopReading
     */    
-    void ReadSerialPort();
+    void readSerialPortContinuousMode();
 
    /*!
     * Resynchronizes the serial port so that each read of a set number
     * of bytes returns a complete data packet.
     */
-    void Resync();
+//    void resync();
 
    /*!
-    * Parses a packet of data from the IMU.  Scale factors are 
+    * Parses a packet of data from the IMU in angle measurement type.  Scale factors are
     * also applied to the data to convert into engineering units.
     */
-    void Parse(unsigned char *packet);
+    void parseAngleMode(unsigned char *packet);
+
+    /*!
+     * Parses a packet of data from the IMU in scale measurement type.  Scale factors are
+     * also applied to the data to convert into engineering units.
+     */
+     void parseScaledMode(unsigned char *packet);
+
+     /*!
+      * Reopens the serial port and cleans it
+      *
+      */
+     void reopenSerialPort();
 
     //! Serial port object for communicating with sensor
     serial::Serial *serial_port_;
     //! most recently parsed IMU data
     ImuData imu_data_;      
-    ShortsUnion s1contents;    //!< union for converting bytes to shorts
-    IntsUnion s2contents;    //!< union for converting bytes to ints
+//    ShortsUnion s1contents;    //!< union for converting bytes to shorts
+//    IntsUnion s2contents;    //!< union for converting bytes to ints
 
    /*!
     * The number of bytes read during each call to read on the serial
@@ -237,6 +280,23 @@ private:
     boost::shared_ptr<boost::thread> read_thread_ptr_;  
     bool reading_status_;  //!< True if the read thread is running, false otherwise.
     DataCallback data_handler_; //!< Function pointer to callback function for parsed data
+    MeasurementType measurementType; //!< Measurements type
+    MessageMode messageMode;
+    string port; //! Serial port file in use
+    int baudrate; //! Serial port daudrate in use
+    long timeout; //! Serial port timeout un use
+    bool calibrationModeEnabled; //! Indicates if calibration mode is started
+
+    /*!
+     * Parses a packet of data from the IMU in voltage measurement type.  Scale factors are
+     * also applied to the data to convert into engineering units.
+     */
+    void parseVoltageMode(unsigned char *packet);
+
+    /*!
+     * Reads the serial port and check the checksum. If the packet is not correct discarts it.
+     */
+    void readSerialPortPollMode();
 };
 
 }; // end namespace

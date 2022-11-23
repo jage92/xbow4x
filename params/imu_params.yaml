@@ -1,19 +1,21 @@
-# Angular velocity and linear acceleration means
-
-ang_vel_mean: [ -0.035059185563458, 0.087375038034032,  0.065801811159180]
-
-lin_acc_mean: [ -0.279279868865320, -0.712468864474146, 0.104990516044884]
 
 # Orientation, angular velocity and linear acceleration covariance matrices
+# Calculated with a rosbag with the IMU static
 
-orientation_cov: [  1.0e6,  0.0,    0.0,
-                    0.0,    1.0e6,  0.0,
-                    0.0,    0.0,    1.0e6]
+#Convariance of the euler angles
+orientation_cov: [  0.0041e-4,  0.0,    0.0,
+                    0.0,    0.0032e-4,  0.0,
+                    0.0,    0.0,    0.1662e-4]
 
-ang_vel_cov: [  1.0e-2, 0.0,    0.0,
-                0.0,    1.0e-2, 0.0,
-                0.0,    0.0,    1.0e-2]
+ang_vel_cov: [  0.2627e-4, 0.0,    0.0,
+                0.0,    0.2076e-4, 0.0,
+                0.0,    0.0,    0.2335e-4]
               
-lin_acc_cov: [  1.0e-2, 0.0,    0.0,
-                0.0,    1.0e-2, 0.0,
-                0.0,    0.0,    1.0e-2]
+lin_acc_cov: [  0.1610e-3, 0.0,    0.0,
+                0.0,    0.0675e-3, 0.0,
+                0.0,    0.0,    0.1974e-3]
+
+lin_acc_cov_no_grab: [  0.1856e-3, 0.0,    0.0,
+                        0.0,    0.0620e-3, 0.0,
+                        0.0,    0.0,    0.1956e-3]
+
