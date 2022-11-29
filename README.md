@@ -7,9 +7,9 @@ This interface is heavily based on David Dias interface library for [XBOW6X](htt
 
 The first steps with the model Crossbow AHRS400CC were implemented by Jesus Morales from University of Malaga
 
-Requires the [serial library](https://github.com/RFRIEDM-Trimble/serial-ros2). Last tested for version 1.2.1.
+Requires the [serial library](https://github.com/RFRIEDM-Trimble/serial-ros2). 
 
-Tested on ROS Noetic and with Crossbow AHRS400CC.
+Tested on ROS Galactic and with Crossbow AHRS400CC.
 
 ## Getting Started
 
