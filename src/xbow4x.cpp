@@ -1,68 +1,55 @@
-#include "xbow4x/xbow4x.h"
-using namespace xbow4x;
+#include "xbow400/xbow4x.hpp"
 
-#define WIN32_LEAN_AND_MEAN 
+#define WIN32_LEAN_AND_MEAN
 #define _USE_MATH_DEFINES
 
 #define AHRS_ANGLE_MODE_PACKET_SIZE 30
 #define AHRS_SCALED_MODE_PACKET_SIZE 24
 #define AHRS_VOLTAGE_MODE_PACKET_SIZE 24
 
+using namespace xbow4x;
 
-void DefaultProcessData(const ImuData& data) {
-    ROS_INFO("IMU4X Packet:");
-    ROS_INFO(" Timestamp: %lf", data.receive_time.toSec());
-    ROS_INFO(" IMU Temperature: %lf", data.boardtemp);
-    ROS_INFO(" Gyro Yaw: %lf", data.yawrate);
-    ROS_INFO(" Gyro Roll: %lf", data.rollrate);
-    ROS_INFO(" Gyro Pitch: %lf", data.pitchrate);
-    ROS_INFO(" Accel X: %lf", data.ax);
-    ROS_INFO(" Accel Y: %lf", data.ay);
-    ROS_INFO(" Accel Z: %lf", data.az);
-}
-
-XBOW4X::XBOW4X()
-{	
-	serial_port_ = NULL;
+XBOW4X::XBOW4X(rclcpp::Logger logger) : logger_(logger)
+{
+  serial_port_ = NULL;
   //data_handler_ = DefaultProcessData;
-	read_size_ = AHRS_ANGLE_MODE_PACKET_SIZE;
-	reading_status_ = false;
+  read_size_ = AHRS_ANGLE_MODE_PACKET_SIZE;
+  reading_status_ = false;
   measurementType = MeasurementType::None;
   messageMode=MessageMode::None;
   calibrationModeEnabled = false;
 }
 
 bool XBOW4X::connect(std::string port, int baudrate, long timeout) {
-	serial_port_ = new serial::Serial(port, baudrate, serial::Timeout::simpleTimeout(timeout));
+  serial_port_ = new serial::Serial(port, baudrate, serial::Timeout::simpleTimeout(timeout));
   u_int8_t buffer[100];
 
   this->port=port;
   this->baudrate=baudrate;
   this->timeout=timeout;
 
-	if (!serial_port_->isOpen()){
-    ROS_INFO("Serial port: %s failed to open.", port.c_str());
-		delete serial_port_;
-		serial_port_ = NULL;
-		return false;
-	} else {
-    ROS_INFO("Serial port: %s opened successfully.", port.c_str());
-    ROS_INFO("Searching for IMU...");
+  if (!serial_port_->isOpen()){
+    RCLCPP_INFO(logger_,"Serial port: %s failed to open.", port.c_str());
+    delete serial_port_;
+    serial_port_ = NULL;
+    return false;
+  } else {
+    RCLCPP_INFO(logger_,"Serial port: %s opened successfully.", port.c_str());
+    RCLCPP_INFO(logger_,"Searching for IMU...");
 
     //Cleanning the buffer
     serial_port_->read(buffer,99);
-	}
-	return true;
+  }
+  return true;
 }
 
 void XBOW4X::disconnect() {
-  ROS_INFO("Disconnecting DMU.");
+  RCLCPP_INFO(logger_,"Disconnecting DMU.");
   stopContinousReading();
-	serial_port_->close();
-	delete serial_port_;
+  serial_port_->close();
+  delete serial_port_;
   serial_port_ = NULL;
   measurementType = MeasurementType::None;
-  read_thread_ptr_=NULL;
 }
 
 int XBOW4X::calibrateCommand(u_int8_t command,string &returnMessage) {
@@ -74,10 +61,10 @@ int XBOW4X::calibrateCommand(u_int8_t command,string &returnMessage) {
   case 's':
     if(!calibrationModeEnabled) {
       sendCommand('R',s);
-      ROS_INFO("Command %c",command);
+      RCLCPP_INFO(logger_,"Command %c",command);
       serial_port_->write(&command,1);
       size = serial_port_->read(buffer,1);
-      ROS_INFO("Response %d",buffer[0]);
+      RCLCPP_INFO(logger_,"Response %d",buffer[0]);
       if(buffer[0]=='S') {
         calibrationModeEnabled=true;
         returnMessage = "Calibration Mode started";
@@ -93,9 +80,9 @@ int XBOW4X::calibrateCommand(u_int8_t command,string &returnMessage) {
   case 'u':
     if(calibrationModeEnabled) {
       serial_port_->write(&command,1);
-      ROS_INFO("Command %c",command);
+      RCLCPP_INFO(logger_,"Command %c",command);
       size = serial_port_->read(buffer,1);
-      ROS_INFO("Response %d",buffer[0]);
+      RCLCPP_INFO(logger_,"Response %d",buffer[0]);
       if(buffer[0]=='U') {
         calibrationModeEnabled=false;
         returnMessage = "Calibration Mode stopped";
@@ -112,9 +99,9 @@ int XBOW4X::calibrateCommand(u_int8_t command,string &returnMessage) {
     if(!calibrationModeEnabled) {
       sendCommand('R',s);
       serial_port_->write(&command,1);
-      ROS_INFO("Command %c",command);
+      RCLCPP_INFO(logger_,"Command %c",command);
       size = serial_port_->read(buffer,1);
-      ROS_INFO("Response %d",buffer[0]);
+      RCLCPP_INFO(logger_,"Response %d",buffer[0]);
       if(buffer[0]=='H') {
         returnMessage = "Hard iron calibration cleared";
         return 0;
@@ -130,9 +117,9 @@ int XBOW4X::calibrateCommand(u_int8_t command,string &returnMessage) {
     if(!calibrationModeEnabled) {
       sendCommand('R',s);
       serial_port_->write(&command,1);
-      ROS_INFO("Command %c",command);
+      RCLCPP_INFO(logger_,"Command %c",command);
       size = serial_port_->read(buffer,1);
-      ROS_INFO("Response %d",buffer[0]);
+      RCLCPP_INFO(logger_,"Response %d",buffer[0]);
       if(buffer[0]=='T') {
         returnMessage = "Soft iron calibration cleared";
         return 0;
@@ -179,9 +166,9 @@ int XBOW4X::setBaudrate(u_int32_t baudrate, string &returnMessage) {
 
   command = 'b';
   serial_port_->write(&command,1);
-  ROS_INFO("Command %c",command);
+  RCLCPP_INFO(logger_,"Command %c",command);
   serial_port_->read(buffer,1);
-  ROS_INFO("Response %c",buffer[0]);
+  RCLCPP_INFO(logger_,"Response %c",buffer[0]);
 
   if(buffer[0]=='B') {
     previousBaudrate = this->baudrate;
@@ -190,9 +177,9 @@ int XBOW4X::setBaudrate(u_int32_t baudrate, string &returnMessage) {
 
     command = 'a';
     serial_port_->write(&command,1);
-    ROS_INFO("Command %c",command);
+    RCLCPP_INFO(logger_,"Command %c",command);
     serial_port_->read(buffer,1);
-    ROS_INFO("Response %c",buffer[0]);
+    RCLCPP_INFO(logger_,"Response %c",buffer[0]);
 
     if(buffer[0]=='A') {
       sendCommand('R',s);
@@ -219,7 +206,6 @@ int XBOW4X::setBaudrate(u_int32_t baudrate, string &returnMessage) {
 int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
       u_int8_t buffer[100];
       char temp[25];
-      u_int8_t c;
       int size;
       int num;
       bool flag=false;
@@ -231,24 +217,24 @@ int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
           if(reading_status_) {
             stopContinousReading();
           }
-          ROS_INFO("Command %c",command);
+          RCLCPP_INFO(logger_,"Command %c",command);
           serial_port_->write(&command,1);
           size = serial_port_->read(buffer,1);
-          ROS_INFO("Response %d",buffer[0]);
+          RCLCPP_INFO(logger_,"Response %d",buffer[0]);
           //measurementType = MeasurementType::None;
           num=100;
           while(buffer[0]!='H') {
             //SEARCH PING
-            ROS_INFO("Command %c",command);
+            RCLCPP_INFO(logger_,"Command %c",command);
             serial_port_->write("G"); //STOP Continuous mode
 //            messageMode = MessageMode::Poll;
             reopenSerialPort();
-            ROS_INFO("Command %c",command);
+            RCLCPP_INFO(logger_,"Command %c",command);
             //PING
             serial_port_->write(&command,1);
             //sleep(1);
             size = serial_port_->read(buffer,1);
-            ROS_INFO("Response %d",buffer[0]);
+            RCLCPP_INFO(logger_,"Response %d",buffer[0]);
             if(!(--num)) {
               returnMessage = "It is not possible to communicate with the IMU";
               return 1;
@@ -261,10 +247,10 @@ int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
             sendCommand('R',s);
             flag=true;
           }
-          ROS_INFO("Command %c",command);
+          RCLCPP_INFO(logger_,"Command %c",command);
           serial_port_->write(&command,1);
           size = serial_port_->read(buffer,1);
-          ROS_INFO("Response %c",buffer[0]);
+          RCLCPP_INFO(logger_,"Response %c",buffer[0]);
           if(buffer[0]=='R') {
             measurementType = MeasurementType::VoltageMode;
             read_size_ = AHRS_VOLTAGE_MODE_PACKET_SIZE;
@@ -282,10 +268,10 @@ int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
             sendCommand('R',s);
             flag=true;
           }
-          ROS_INFO("Command %c",command);
+          RCLCPP_INFO(logger_,"Command %c",command);
           serial_port_->write(&command,1);
           size = serial_port_->read(buffer,1);
-          ROS_INFO("Response %c",buffer[0]);
+          RCLCPP_INFO(logger_,"Response %c",buffer[0]);
           if(buffer[0]=='C') {
             measurementType = MeasurementType::ScaledMode;
             read_size_ = AHRS_SCALED_MODE_PACKET_SIZE;
@@ -303,22 +289,22 @@ int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
             sendCommand('R',s);
             flag=true;
           }
-          ROS_INFO("Command %c",command);
+          RCLCPP_INFO(logger_,"Command %c",command);
           serial_port_->write(&command,1);
           size = serial_port_->read(buffer,1);
-          ROS_INFO("Response %c",buffer[0]);
+          RCLCPP_INFO(logger_,"Response %c",buffer[0]);
           if(buffer[0]=='A') {
             measurementType = MeasurementType::AngleMode;
             read_size_ = AHRS_ANGLE_MODE_PACKET_SIZE;
             returnMessage = "Angle Mode enabled";
-            ROS_INFO("Angle Mode enabled");
+            RCLCPP_INFO(logger_,"Angle Mode enabled");
             if(flag)
               sendCommand('C',s);
             return 0;
           }
           else {
             returnMessage = "It is not possible to communicate with the IMU";
-            ROS_ERROR("It is not possible to communicate with the IMU");
+            RCLCPP_ERROR(logger_,"It is not possible to communicate with the IMU");
             return 1;
           }
         case 'P': //Poll Mode
@@ -326,13 +312,13 @@ int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
               sendCommand('R',s);
               flag=true;
             }
-            ROS_INFO("Command %c",command);
+            RCLCPP_INFO(logger_,"Command %c",command);
             serial_port_->write(&command,1);
             messageMode = MessageMode::Poll;
             returnMessage = "Poll Mode enabled";
             return 0;
         case 'C': //Continuous Mode
-            ROS_INFO("Command %c",command);
+            RCLCPP_INFO(logger_,"Command %c",command);
             serial_port_->write(&command,1);
             if(measurementType == MeasurementType::None) {
               returnMessage = "No measurement mode selected";
@@ -340,19 +326,19 @@ int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
             }
             if(startContinuousReading()) {
               returnMessage = "Starting continuous mode";
-              ROS_INFO("%s",returnMessage.c_str());
+              RCLCPP_INFO(logger_,"%s",returnMessage.c_str());
               return 0;
             }
             else {
               returnMessage = "Imposible to start continuous mode";
-              ROS_INFO("%s",returnMessage.c_str());
+              RCLCPP_INFO(logger_,"%s",returnMessage.c_str());
               return 1;
             }
         case 'G': //Request Data
             if(reading_status_) {
               sendCommand('R',s);
             }
-            ROS_INFO("Command %c",command);
+            RCLCPP_INFO(logger_,"Command %c",command);
             serial_port_->write(&command,1);
             if(measurementType == MeasurementType::None) {
               returnMessage = "No measurement mode selected";
@@ -364,11 +350,11 @@ int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
             return 0;
         case 'v': //Query DMU Version
           if(!reading_status_) {
-            ROS_INFO("Command %c",command);
+            RCLCPP_INFO(logger_,"Command %c",command);
             serial_port_->write(&command,1);
             size = serial_port_->read(buffer,26);
             strncpy(temp,(char *)&buffer[1],size-1);
-            ROS_INFO("Response %s",temp);
+            RCLCPP_INFO(logger_,"Response %s",temp);
             if(strlen(temp)==24) {
               returnMessage = string(temp);
               return 0;
@@ -391,7 +377,7 @@ int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
                         (unsigned char)(buffer[2]) << 16 |
                         (unsigned char)(buffer[3]) << 8 |
                         (unsigned char)(buffer[4]));
-            ROS_INFO("Response %d",num);
+            RCLCPP_INFO(logger_,"Response %d",num);
             if(size == 6) {
               returnMessage = to_string(num);
               return 0;
@@ -417,27 +403,25 @@ int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
 
 
 bool XBOW4X::startContinuousReading() {
-	// create thread to read from sensor
+  // create thread to read from sensor
   if(measurementType == MeasurementType::None) {
-    ROS_ERROR("No MEASUREMENT MODE selected");
+    RCLCPP_ERROR(logger_,"No MEASUREMENT MODE selected");
     return false;
   }
   messageMode = MessageMode::Continous;
-	reading_status_=true;
-  read_thread_ptr_ = boost::shared_ptr<boost::thread > (new boost::thread(boost::bind(&XBOW4X::readSerialPortContinuousMode, this)));
+  reading_status_=true;
+  //read_thread_ptr_ = boost::shared_ptr<boost::thread> (new boost::thread(boost::bind(&XBOW4X::readSerialPortContinuousMode, this)));
 
   return true;
 }
 
 void XBOW4X::stopContinousReading() {
   reading_status_=false;
-  read_thread_ptr_->detach();
-  read_thread_ptr_=NULL;
   serial_port_->write("G"); //STOP Continuous mode
 //  messageMode = MessageMode::Poll;
 }
 
-void xbow4x::XBOW4X::readSerialPortPollMode() {
+ImuData XBOW4X::readSerialPortPollMode() {
   unsigned char buffer[read_size_];
   int len, sum, i;
   string s;
@@ -445,7 +429,7 @@ void xbow4x::XBOW4X::readSerialPortPollMode() {
 //  if(!serialPort_enabled) //Because concurrency
 //    return;
   len = serial_port_->read(buffer, read_size_);
-  imu_data_.receive_time = ros::Time::now();
+  imu_data_.receive_time = clock.now();
   sum = 0;
   for(int i = 1; i < (len - 1); i++) {
       sum += (int)buffer[i];
@@ -455,34 +439,32 @@ void xbow4x::XBOW4X::readSerialPortPollMode() {
   // check if we have a complete read and if checksum is correct
   if ((len != read_size_) || (sum != (int)buffer[(len - 1)])) {
     // display data
-    ROS_INFO("Read data: %d",len);
+    RCLCPP_INFO(logger_,"Read data: %d",len);
     for(i = 0; i < len; i++)
-        ROS_INFO("%d", (int)buffer[i]);
-    ROS_INFO("");
-    ROS_INFO("Computed checksum: %d Data checksum: %d",sum, (int)buffer[(len - 1)]);
+        RCLCPP_INFO(logger_,"%d", (int)buffer[i]);
+    RCLCPP_INFO(logger_,"");
+    RCLCPP_INFO(logger_,"Computed checksum: %d Data checksum: %d",sum, (int)buffer[(len - 1)]);
 
     sendCommand('R',s);
-    ROS_INFO("%s",s.c_str());
+    RCLCPP_INFO(logger_,"%s",s.c_str());
     sendCommand((u_int8_t)messageMode,s);
-    ROS_INFO("%s",s.c_str());
-    return;
+    RCLCPP_INFO(logger_,"%s",s.c_str());
   }
+  else {
+    // parse packet
+    if(measurementType == MeasurementType::AngleMode)
+      parseAngleMode(buffer);
+    else if(measurementType == MeasurementType::ScaledMode)
+      parseScaledMode(buffer);
+    else if(measurementType == MeasurementType::VoltageMode)
+      parseVoltageMode(buffer);
+  }
+  return imu_data_;
 
-  // parse packet
-  if(measurementType == MeasurementType::AngleMode)
-    parseAngleMode(buffer);
-  else if(measurementType == MeasurementType::ScaledMode)
-    parseScaledMode(buffer);
-  else if(measurementType == MeasurementType::VoltageMode)
-    parseVoltageMode(buffer);
-
-  // call callback with data
-  if (data_handler_ != NULL)
-    data_handler_(imu_data_);
 }
 
 void XBOW4X::readSerialPortContinuousMode() {
-    
+
   while (reading_status_) {
     readSerialPortPollMode();
   }
@@ -527,7 +509,7 @@ void XBOW4X::parseAngleMode(unsigned char *packet) { //ANGLE MODE
     else
        imu_data_.yawrate = -32768 + ((packet[11] & 0x7F) << 8) + packet[12];
     imu_data_.yawrate *= 1.5*100.0/32768.0*M_PI/180; // rad/sec
-    
+
     if ((packet[13] & 0x80) == 0)
          imu_data_.ax = ((packet[13] << 8) + packet[14]);
     else
@@ -568,7 +550,6 @@ void XBOW4X::parseAngleMode(unsigned char *packet) { //ANGLE MODE
     imu_data_.boardtemp = (imu_data_.boardtemp*5.0/4096.0-1.375)*44.4;
 
     imu_data_.counter = (packet[27] <<8) + packet[28];
-
 }
 
 

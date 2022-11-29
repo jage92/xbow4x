@@ -1,88 +1,73 @@
-cmake_minimum_required(VERSION 2.8.3)
-project(xbow4x)
+cmake_minimum_required(VERSION 3.8)
+project(xbow400)
 
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  sensor_msgs
-  serial
-  tf2
-  tf2_ros
-  message_generation
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(serial REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+find_package(xbow400 REQUIRED)
+
+# uncomment the following section in order to fill in
+# further dependencies manually.
+# find_package(<dependency> REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+    "srv/BroadcastTf.srv"
+    "srv/SendCommand.srv"
+    "srv/Status.srv"
+    "srv/Calibrate.srv"
+    "srv/SetBaudrate.srv"
 )
 
-add_service_files(
-  FILES
-  broadcast_tf.srv
-  send_command.srv
-  status.srv
-  calibrate.srv
-  set_baudrate.srv
-)
+add_executable(xbow4x_node
+    src/xbow4x.cpp
+    src/xbow4x_node.cpp)
 
-generate_messages(
-  DEPENDENCIES
-  std_msgs
-)
+target_include_directories(xbow4x_node
+    PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
 
-## System dependencies are found with CMake's conventions
-find_package(Boost REQUIRED COMPONENTS thread system)
-
-###################################
-## catkin specific configuration ##
-###################################
-## The catkin_package macro generates cmake config files for your package
-## Declare things to be passed to dependent projects
-## INCLUDE_DIRS: uncomment this if you package contains header files
-## LIBRARIES: libraries you create in this project that dependent projects also need
-## CATKIN_DEPENDS: catkin_packages dependent projects also need
-## DEPENDS: system dependencies of this project that dependent projects also need
-catkin_package(
- INCLUDE_DIRS include
- LIBRARIES xbow4x
- CATKIN_DEPENDS message_runtime roscpp sensor_msgs serial tf2
- # DEPENDS system_lib
-)
-
-###########
-## Build ##
-###########
-
-
-## Specify additional locations of header files
-## Your package locations should be listed before other locations
-# include_directories(include)
-include_directories(
-  ${catkin_INCLUDE_DIRS}
-  ${PROJECT_SOURCE_DIR}/include
-)
-
-file(GLOB_RECURSE HEADERS */*.hpp */*.h)
-
-## Declare a C++ library
-add_library(xbow4x
-  src/xbow4x.cpp
+#ament_target_dependencies(xbow4x_node rclcpp serial sensor_msgs tf2_ros)
+#ament_target_dependencies(xbow4x_node rclcpp serial sensor_msgs tf2_ros tf2_geometry_msgs geometry_msgs)
+ament_target_dependencies(xbow4x_node
+    rclcpp
+    xbow400
+    std_msgs
+    geometry_msgs
+    serial
+    sensor_msgs
+    tf2
+    tf2_ros
+    tf2_geometry_msgs
 )
 
 
 
+install(TARGETS
+  xbow4x_node
+  DESTINATION lib/${PROJECT_NAME})
 
-## Declare a C++ executable
-add_executable(xbow4x_node ${HEADERS} src/xbow4x_node.cpp)
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # uncomment the line when a copyright and license is not present in all source files
+  #set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # uncomment the line when this package is not in a git repo
+  #set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
 
-## Add cmake target dependencies of the executable
-## same as for the library above
-# add_dependencies(xbow440_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
-## Specify libraries to link a library or executable target against
-target_link_libraries(xbow4x_node
-  xbow4x
-  ${catkin_LIBRARIES}
-  ${Boost_SYSTEM_LIBRARY}
-  ${Boost_THREAD_LIBRARY}
-)
-
-file(GLOB_RECURSE EXTRA_FILES */*)
-add_custom_target(${PROJECT_NAME}_OTHER_FILES ALL WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} SOURCES ${EXTRA_FILES})
+ament_package()
