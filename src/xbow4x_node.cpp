@@ -35,8 +35,8 @@ string frame_id; //! Name of the IMU frame
 sensor_msgs::Imu msg, msg_no_grab; //! Message to public the IMU topic
 sensor_msgs::MagneticField msgmag; //! Message to public the Magnetometec topic
 
-std::vector<double> ang_vel_mean; //! Array of the algular rate bias
-std::vector<double>  lin_acc_mean_no_grab; //! Array of the linear acceleration whiout gravity
+std::vector<double> ang_vel_mean(3); //! Array of the algular rate bias
+std::vector<double>  lin_acc_mean_no_grab(3); //! Array of the linear acceleration whiout gravity
 bool is_initialized=false; //! Flag that indicates if the xbow is initialized
 bool imu_started=false; //! Flag that indicates if the xbow is strated
 int counter=0;
@@ -397,7 +397,7 @@ int main(int argc, char **argv)
 
   ros::init(argc, argv, "xbow4x_node");
 
-  ros::NodeHandle node_handle("xbow/xbow4x_node");
+  ros::NodeHandle node_handle("xbow4x_node");
 
 
   imu_pub = node_handle.advertise<sensor_msgs::Imu>("imu/data_raw", 1);
@@ -414,7 +414,7 @@ int main(int argc, char **argv)
 
   if(!node_handle.getParam("broadcast_tf", broadcats_tf))
     broadcats_tf =true;
-  
+
   if(!node_handle.getParam("frame_id", frame_id))
     frame_id = string("cbimu_frame");
 
@@ -433,14 +433,6 @@ int main(int argc, char **argv)
   }
   else
     messageMode = xbow4x::MessageMode::Continous;
-
-  //node_handle.getParam("ang_vel_mean", ang_vel_mean);
-  if(!node_handle.getParam("ang_vel_mean", ang_vel_mean))
-    ang_vel_mean = {0.0,0.0,0.0};
-//  node_handle.param("lin_acc_mean", lin_acc_mean,{0.0,0.0,0.0});
-
-  if(!node_handle.getParam("lin_acc_mean_no_grab", lin_acc_mean_no_grab))
-    lin_acc_mean_no_grab ={0.0,0.0,0.0};
   
   std::vector<double> orientation_cov;
   if(!node_handle.getParam("orientation_cov", orientation_cov))
@@ -448,9 +440,8 @@ int main(int argc, char **argv)
                             0.0, 1.0e6, 0.0,
                             0.0, 0.0, 1.0e6};
 
-  for(int i = 0; i < 9; i++) {
-    msg.orientation_covariance[i] = orientation_cov[i];
-  }
+  std::copy_n(orientation_cov.begin(),orientation_cov.size(),msg.orientation_covariance.begin());
+  std::copy_n(orientation_cov.begin(),orientation_cov.size(),msg_no_grab.orientation_covariance.begin());
   
   std::vector<double> ang_vel_cov;
   if(!node_handle.getParam("ang_vel_cov", ang_vel_cov))
@@ -458,9 +449,8 @@ int main(int argc, char **argv)
                    0.0,    1.0e-2, 0.0,
                    0.0,    0.0,    1.0e-2};
 
-  for(int i = 0; i < 9; i++) {
-    msg.angular_velocity_covariance[i] = ang_vel_cov[i];
-  }
+  std::copy_n(ang_vel_cov.begin(),ang_vel_cov.size(),msg.angular_velocity_covariance.begin());
+  std::copy_n(ang_vel_cov.begin(),ang_vel_cov.size(),msg_no_grab.angular_velocity_covariance.begin());
 
   std::vector<double> lin_acc_cov;
   if(!node_handle.getParam("lin_acc_cov", lin_acc_cov))
@@ -468,10 +458,7 @@ int main(int argc, char **argv)
                    0.0,    1.0e-2, 0.0,
                    0.0,    0.0,    1.0e-2};
 
-
-  for(int i = 0; i < 9; i++) {
-    msg.linear_acceleration_covariance[i] = lin_acc_cov[i];
-  }
+  std::copy_n(lin_acc_cov.begin(),lin_acc_cov.size(),msg.linear_acceleration_covariance.begin());
   
   std::vector<double> lin_acc_cov_no_grab;
   if(!node_handle.getParam("lin_acc_cov_no_grab", lin_acc_cov_no_grab))
@@ -479,10 +466,15 @@ int main(int argc, char **argv)
                    0.0,    1.0e-2, 0.0,
                    0.0,    0.0,    1.0e-2};
 
+  std::copy_n(lin_acc_cov_no_grab.begin(),lin_acc_cov_no_grab.size(),msg_no_grab.linear_acceleration_covariance.begin());
 
-  for(int i = 0; i < 9; i++) {
-    msg_no_grab.linear_acceleration_covariance[i] = lin_acc_cov[i];
-  }
+  std::vector<double> mag_cov;
+  if(!node_handle.getParam("mag_cov", mag_cov))
+    mag_cov = {1.0e-2, 0.0,    0.0,
+                   0.0,    1.0e-2, 0.0,
+                   0.0,    0.0,    1.0e-2};
+
+  std::copy_n(mag_cov.begin(),mag_cov.size(),msgmag.magnetic_field_covariance.begin());
 
   XBOW4X xbow;
 

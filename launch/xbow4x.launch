@@ -8,4 +8,4 @@
     <param name="message_mode" value="C"/> <!-- Continuous Mode: C Poll Mode: P -->
     <rosparam command="load" file="$(find xbow4x)/params/imu_params.yaml" />
   </node>
- </launch>
+</launch>
