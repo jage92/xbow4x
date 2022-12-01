@@ -206,7 +206,7 @@ private:
     *
     * @see XBOW4X::XBOW4X::Parse, XBOW4X::XBOW4X::StartReading, XBOW4X::XBOW4X::StopReading
     */
-    void readSerialPortContinuousMode();
+//    void readSerialPortContinuousMode();
 
    /*!
     * Resynchronizes the serial port so that each read of a set number

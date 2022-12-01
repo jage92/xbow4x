@@ -439,16 +439,16 @@ ImuData XBOW4X::readSerialPortPollMode() {
   // check if we have a complete read and if checksum is correct
   if ((len != read_size_) || (sum != (int)buffer[(len - 1)])) {
     // display data
-    RCLCPP_INFO(logger_,"Read data: %d",len);
+//    RCLCPP_INFO(logger_,"Read data: %d",len);
     for(i = 0; i < len; i++)
         RCLCPP_INFO(logger_,"%d", (int)buffer[i]);
-    RCLCPP_INFO(logger_,"");
+//    RCLCPP_INFO(logger_,"");
     RCLCPP_INFO(logger_,"Computed checksum: %d Data checksum: %d",sum, (int)buffer[(len - 1)]);
 
     sendCommand('R',s);
-    RCLCPP_INFO(logger_,"%s",s.c_str());
+//    RCLCPP_INFO(logger_,"%s",s.c_str());
     sendCommand((u_int8_t)messageMode,s);
-    RCLCPP_INFO(logger_,"%s",s.c_str());
+//    RCLCPP_INFO(logger_,"%s",s.c_str());
   }
   else {
     // parse packet
@@ -463,13 +463,13 @@ ImuData XBOW4X::readSerialPortPollMode() {
 
 }
 
-void XBOW4X::readSerialPortContinuousMode() {
+//void XBOW4X::readSerialPortContinuousMode() {
 
-  while (reading_status_) {
-    readSerialPortPollMode();
-  }
+//  while (reading_status_) {
+//    readSerialPortPollMode();
+//  }
 
-}
+//}
 
 void XBOW4X::parseAngleMode(unsigned char *packet) { //ANGLE MODE
     // We're OK and actually have a good packet /w good checksum,

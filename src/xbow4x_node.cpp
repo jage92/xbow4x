@@ -40,91 +40,84 @@ class Xbow4xNode : public rclcpp::Node
       //Xbow4x xbow(this->get_logger());
       string s;
       int baudrate;
-      string port_name;
-      std::vector<double> orientation_cov;
-      std::vector<double> lin_acc_cov;
-      std::vector<double> ang_vel_cov;
-      std::vector<double> lin_acc_cov_no_grab;
+      string port_name = "";
+      std::vector<double> orientation_cov(9);
+      std::vector<double> lin_acc_cov(9);
+      std::vector<double> ang_vel_cov(9);
+      std::vector<double> lin_acc_cov_no_grab(9);
+      std::vector<double> mag_cov(9);
+
+
+      ang_vel_mean = vector<double>(3);
+      lin_acc_mean_no_grab = vector<double>(3);
 
       imu_pub = this->create_publisher<sensor_msgs::msg::Imu>("imu/data_raw", 1);
       mag_pub = this->create_publisher<sensor_msgs::msg::MagneticField>("imu/mag", 1);
       imu_no_grab_pub = this->create_publisher<sensor_msgs::msg::Imu>("imu/data_no_grab", 1);
       br = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
+      this->declare_parameter("port", "/dev/ttyUSB0");
+      port_name = this->get_parameter("port").get_parameter_value().get<string>();
 
-      if(!this->get_parameter("port", port_name))
-        port_name = string("/dev/ttyUSB0");
 
-      if(!this->get_parameter("baudrate", baudrate))//38400
-        baudrate = 38400;
+      this->declare_parameter("baudrate", 38400);//38400
+      baudrate = this->get_parameter("baudrate").get_parameter_value().get<int>();
 
-      if(!this->get_parameter("broadcast_tf", broadcats_tf))
-        broadcats_tf =true;
 
-      if(!this->get_parameter("frame_id", frame_id))
-        frame_id = string("cbimu_frame");
+      this->declare_parameter("broadcast_tf", true);
+      broadcats_tf = this->get_parameter("broadcast_tf").get_parameter_value().get<bool>();
+
+      this->declare_parameter("frame_id","cbimu_frame");
+      frame_id = this->get_parameter("frame_id").get_parameter_value().get<string>();
 
       //Angle Mode: a Scaled Mode: c Voltage Mode: r
-      if(this->get_parameter("measurement_mode",s)) {//AngleMode
-           measurementMode =static_cast<xbow4x::MeasurementType>(s.c_str()[0]);
-           RCLCPP_INFO(this->get_logger(),"%s",s.c_str());
-      }
-      else
-        measurementMode = xbow4x::MeasurementType::AngleMode;
+      this->declare_parameter("measurement_mode","a"); //AngleMode
+      measurementMode = static_cast<xbow4x::MeasurementType>(this->get_parameter("measurement_mode").get_parameter_value().get<string>().c_str()[0]);
 
       //Continuous Mode: C Poll Mode: P Poll/Stop Continuous Mode: G
-      if(this->get_parameter("message_mode", s)) { //Continuous Mode
-        RCLCPP_INFO(this->get_logger(),"%s",s.c_str());
-        messageMode =static_cast<xbow4x::MessageMode>(s.c_str()[0]);
-      }
-      else
-        messageMode = xbow4x::MessageMode::Continous;
+      this->declare_parameter("message_mode","C"); //Continuous Mode
+      messageMode = static_cast<xbow4x::MessageMode>(this->get_parameter("message_mode").get_parameter_value().get<string>().c_str()[0]);
 
-      //node_handle.getParam("ang_vel_mean", ang_vel_mean);
-      if(!this->get_parameter("ang_vel_mean", ang_vel_mean))
-        ang_vel_mean = {0.0,0.0,0.0};
-    //  node_handle.param("lin_acc_mean", lin_acc_mean,{0.0,0.0,0.0});
+      this->declare_parameter("orientation_cov",vector<double>({1.0e6,  0.0,    0.0,
+                                                                0.0, 1.0e6, 0.0,
+                                                                0.0, 0.0, 1.0e6}));
+      orientation_cov = this->get_parameter("orientation_cov").get_parameter_value().get<vector<double>>();
 
-      if(!this->get_parameter("lin_acc_mean_no_grab", lin_acc_mean_no_grab))
-        lin_acc_mean_no_grab ={0.0,0.0,0.0};
-
-      if(!this->get_parameter("orientation_cov", orientation_cov))
-        orientation_cov = {1.0e6,  0.0,    0.0,
-                                0.0, 1.0e6, 0.0,
-                                0.0, 0.0, 1.0e6};
-
-      for(int i = 0; i < 9; i++) {
-        msg.orientation_covariance[i] = orientation_cov[i];
-      }
-
-      if(!this->get_parameter("ang_vel_cov", ang_vel_cov))
-        ang_vel_cov = {1.0e-2, 0.0,    0.0,
-                       0.0,    1.0e-2, 0.0,
-                       0.0,    0.0,    1.0e-2};
-
-      for(int i = 0; i < 9; i++) {
-        msg.angular_velocity_covariance[i] = ang_vel_cov[i];
-      }
-
-      if(!this->get_parameter("lin_acc_cov", lin_acc_cov))
-        lin_acc_cov = {1.0e-2, 0.0,    0.0,
-                       0.0,    1.0e-2, 0.0,
-                       0.0,    0.0,    1.0e-2};
+      std::copy_n(orientation_cov.begin(),orientation_cov.size(),msg.orientation_covariance.begin());
+      std::copy_n(orientation_cov.begin(),orientation_cov.size(),msg_no_grab.orientation_covariance.begin());
 
 
-      for(int i = 0; i < 9; i++) {
-        msg.linear_acceleration_covariance[i] = lin_acc_cov[i];
-      }
+      this->declare_parameter("ang_vel_cov",vector<double>({1.0e-2, 0.0,    0.0,
+                                                                0.0,    1.0e-2, 0.0,
+                                                                0.0,    0.0,    1.0e-2}));
+      ang_vel_cov = this->get_parameter("ang_vel_cov").get_parameter_value().get<vector<double>>();
 
-      if(!this->get_parameter("lin_acc_cov_no_grab", lin_acc_cov_no_grab))
-        lin_acc_cov_no_grab = {1.0e-2, 0.0,    0.0,
-                       0.0,    1.0e-2, 0.0,
-                       0.0,    0.0,    1.0e-2};
+      std::copy_n(ang_vel_cov.begin(),ang_vel_cov.size(),msg.angular_velocity_covariance.begin());
+      std::copy_n(ang_vel_cov.begin(),ang_vel_cov.size(),msg_no_grab.angular_velocity_covariance.begin());
 
 
-      for(int i = 0; i < 9; i++) {
-        msg_no_grab.linear_acceleration_covariance[i] = lin_acc_cov[i];
-      }
+      this->declare_parameter("lin_acc_cov",vector<double>({1.0e-2, 0.0,    0.0,
+                                                                0.0,    1.0e-2, 0.0,
+                                                                0.0,    0.0,    1.0e-2}));
+      lin_acc_cov = this->get_parameter("lin_acc_cov").get_parameter_value().get<vector<double>>();
+
+      std::copy_n(lin_acc_cov.begin(),lin_acc_cov.size(),msg.linear_acceleration_covariance.begin());
+
+
+      this->declare_parameter("lin_acc_cov_no_grab",vector<double>({1.0e-2, 0.0,    0.0,
+                                                                0.0,    1.0e-2, 0.0,
+                                                                0.0,    0.0,    1.0e-2}));
+      lin_acc_cov_no_grab = this->get_parameter("lin_acc_cov_no_grab").get_parameter_value().get<vector<double>>();
+
+      std::copy_n(lin_acc_cov_no_grab.begin(),lin_acc_cov_no_grab.size(),msg_no_grab.linear_acceleration_covariance.begin());
+
+      this->declare_parameter("mag_cov",vector<double>({1.0e-2, 0.0,    0.0,
+                                                                0.0,    1.0e-2, 0.0,
+                                                                0.0,    0.0,    1.0e-2}));
+      mag_cov = this->get_parameter("mag_cov").get_parameter_value().get<vector<double>>();
+
+      std::copy_n(mag_cov.begin(),mag_cov.size(),msgmag.magnetic_field_covariance.begin());
+
 
       broadcastTfSrv = this->create_service<xbow400::srv::BroadcastTf>("broadcast_tf",std::bind(&Xbow4xNode::broadcatsTf_srv,this,std::placeholders::_1,std::placeholders::_2));
       statusSrv = this->create_service<xbow400::srv::Status>("status",std::bind(&Xbow4xNode::status_srv,this,std::placeholders::_1,std::placeholders::_2));
@@ -257,7 +250,6 @@ class Xbow4xNode : public rclcpp::Node
           lin_acc_mean_no_grab[Z] += a_b[Z];
           counter++;
     //      RCLCPP_INFO(this->get_logger(),"%d %lf %lf %lf",counter,ang_vel_mean[X],ang_vel_mean[Y],ang_vel_mean[Z]);
-
           if(counter == 1000) {
             is_initialized = true;
 
@@ -550,9 +542,9 @@ private:
 
     void startTimer() {
       if(measurementMode == xbow4x::MeasurementType::AngleMode)
-        timer_ = this->create_wall_timer(16ms, std::bind(&Xbow4xNode::publishImuDataAngleMode,this));
+        timer_ = this->create_wall_timer(8ms, std::bind(&Xbow4xNode::publishImuDataAngleMode,this));
       else
-        timer_ = this->create_wall_timer(16ms, std::bind(&Xbow4xNode::publishImuDataScaledVoltageMode,this));
+        timer_ = this->create_wall_timer(8ms, std::bind(&Xbow4xNode::publishImuDataScaledVoltageMode,this));
     }
 
     void stopTimer() {
