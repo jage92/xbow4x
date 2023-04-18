@@ -99,32 +99,6 @@ struct ImuData {
     unsigned short bitstatus;
 };
 
-
-/*!
- * This function type describes the prototype for the logging callbacks.
- * 
- * The function takes a std::string reference and returns nothing.  It is 
- * called from the library when a logging message occurs.  This 
- * allows the library user to hook into this and integrate it with their own 
- * logging system.  It can be set with any of the set<log level>Handler 
- * functions.
- * 
- * @see SerialListener::setInfoHandler, SerialListener::setDebugHandler, 
- * SerialListener::setWarningHandler
- */
-typedef boost::function<void(const std::string&)> LoggingCallback;
-
-/*!
- * This function type describes the prototype for the data callback.
- * 
- * The function takes a xbow4x::imuData reference and returns nothing.  It is 
- * called from the library when new data arrives and is parsed.
- * 
- * @see XBOW4X::setDataHandler
- */
-typedef boost::function<void(const xbow4x::ImuData&)> DataCallback;
-
-
 class XBOW4X{
 public:
 	
@@ -148,21 +122,7 @@ public:
     */
     void disconnect();
 
-   /*!
-    * Sets the handler to be called when a new data is received.
-    * 
-    * This allows you to set a catch all function that will get called 
-    * everytime a new data packet is received from the IMU.
-    * 
-    * \param default_handler A function pointer to the callback to handle 
-    * parsed IMU data.
-    * 
-    * \see XBOW4X::DataCallback
-    */
-    void set_data_handler(DataCallback data_handler) {
-        this->data_handler_ = data_handler;
-    }
-    
+
     /*!
      * Send a command to the IMU
      * Commands in the Crossbow documentation
@@ -195,6 +155,11 @@ public:
 
     MessageMode getMessageMode() const;
 
+    /*!
+     * Reads the serial port and check the checksum. If the packet is not correct discarts it.
+     */
+    ImuData readSerialPort();
+
 private:
 
    /*!
@@ -215,40 +180,11 @@ private:
     */
     void stopContinousReading();
 
-    /*!
-     * Pings the IMU to determine if it is properly connected
-     *
-     * This method sends a ping to the IMU and waits for a response.
-     *
-     * @param num_attempts The number of times to ping the device
-     * before giving up
-     * @param timeout The time in milliseconds to wait for each reponse
-     *
-     * @return True if the IMU was found, false if it was not.
-     *
-     * @see XBOW4X::DataCallback
-     */
-//     bool sync(int num_attempts=5);
-   /*!
-    * Method run in a seperate thread that continuously reads from the
-    * serial port.  When a complete packet is received, the parse 
-    * method is called to process the data
-    * 
-    * @see XBOW4X::XBOW4X::Parse, XBOW4X::XBOW4X::StartReading, XBOW4X::XBOW4X::StopReading
-    */    
-    void readSerialPortContinuousMode();
-
-   /*!
-    * Resynchronizes the serial port so that each read of a set number
-    * of bytes returns a complete data packet.
-    */
-//    void resync();
-
    /*!
     * Parses a packet of data from the IMU in angle measurement type.  Scale factors are
     * also applied to the data to convert into engineering units.
     */
-    void parseAngleMode(unsigned char *packet);
+    ImuData parseAngleMode(unsigned char *packet);
 
     /*!
      * Parses a packet of data from the IMU in scale measurement type.  Scale factors are
@@ -279,7 +215,6 @@ private:
     //! shared pointer to Boost thread for listening for data from xbow 
     boost::shared_ptr<boost::thread> read_thread_ptr_;  
     bool reading_status_;  //!< True if the read thread is running, false otherwise.
-    DataCallback data_handler_; //!< Function pointer to callback function for parsed data
     MeasurementType measurementType; //!< Measurements type
     MessageMode messageMode;
     string port; //! Serial port file in use
@@ -293,10 +228,7 @@ private:
      */
     void parseVoltageMode(unsigned char *packet);
 
-    /*!
-     * Reads the serial port and check the checksum. If the packet is not correct discarts it.
-     */
-    void readSerialPortPollMode();
+
 };
 
 }; // end namespace

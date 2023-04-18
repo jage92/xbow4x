@@ -40,6 +40,11 @@
 
   <author email="jage@uma.es">Juan Alberto García Esteban</author>
   <maintainer email="jage@uma.es">Juan Alberto García Esteban</maintainer>
+
+  <url type="website">https://github.com/jage92/xbow4x</url>
+  <url type="bugtracker">https://github.com/jage92/xbow4x/issues</url>
+  <url type="repository">https://github.com/jage92/xbow4x</url>
+
   <license>MIT License</license>
 
   <buildtool_depend>catkin</buildtool_depend>

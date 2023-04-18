@@ -359,8 +359,8 @@ int XBOW4X::sendCommand(u_int8_t command, string &returnMessage) {
               return 1;
             }
             messageMode = MessageMode::Poll;
-            readSerialPortPollMode();
-            returnMessage = "Packet readed";
+            readSerialPort();
+            returnMessage = "Packet read";
             return 0;
         case 'v': //Query DMU Version
           if(!reading_status_) {
@@ -424,20 +424,17 @@ bool XBOW4X::startContinuousReading() {
   }
   messageMode = MessageMode::Continous;
 	reading_status_=true;
-  read_thread_ptr_ = boost::shared_ptr<boost::thread > (new boost::thread(boost::bind(&XBOW4X::readSerialPortContinuousMode, this)));
 
   return true;
 }
 
 void XBOW4X::stopContinousReading() {
   reading_status_=false;
-  read_thread_ptr_->detach();
-  read_thread_ptr_=NULL;
   serial_port_->write("G"); //STOP Continuous mode
 //  messageMode = MessageMode::Poll;
 }
 
-void xbow4x::XBOW4X::readSerialPortPollMode() {
+ImuData xbow4x::XBOW4X::readSerialPort() {
   unsigned char buffer[read_size_];
   int len, sum, i;
   string s;
@@ -465,31 +462,21 @@ void xbow4x::XBOW4X::readSerialPortPollMode() {
     ROS_INFO("%s",s.c_str());
     sendCommand((u_int8_t)messageMode,s);
     ROS_INFO("%s",s.c_str());
-    return;
+
   }
-
-  // parse packet
-  if(measurementType == MeasurementType::AngleMode)
-    parseAngleMode(buffer);
-  else if(measurementType == MeasurementType::ScaledMode)
-    parseScaledMode(buffer);
-  else if(measurementType == MeasurementType::VoltageMode)
-    parseVoltageMode(buffer);
-
-  // call callback with data
-  if (data_handler_ != NULL)
-    data_handler_(imu_data_);
+  else {
+    // parse packet
+    if(measurementType == MeasurementType::AngleMode)
+      parseAngleMode(buffer);
+    else if(measurementType == MeasurementType::ScaledMode)
+      parseScaledMode(buffer);
+    else if(measurementType == MeasurementType::VoltageMode)
+      parseVoltageMode(buffer);
+  }
+  return imu_data_;
 }
 
-void XBOW4X::readSerialPortContinuousMode() {
-    
-  while (reading_status_) {
-    readSerialPortPollMode();
-  }
-
-}
-
-void XBOW4X::parseAngleMode(unsigned char *packet) { //ANGLE MODE
+ImuData XBOW4X::parseAngleMode(unsigned char *packet) { //ANGLE MODE
     // We're OK and actually have a good packet /w good checksum,
     // decode it, convert the units and update state:
     if ((packet[1] & 0x80) == 0)
@@ -532,19 +519,19 @@ void XBOW4X::parseAngleMode(unsigned char *packet) { //ANGLE MODE
          imu_data_.ax = ((packet[13] << 8) + packet[14]);
     else
          imu_data_.ax = -32768 +((packet[13] & 0x7F) << 8)+packet[14];
-    imu_data_.ax *= 1.5*2.0/32768.0*9.81; // m^2/s
+    imu_data_.ax *= -1.5*2.0/32768.0*9.81; // m^2/s
 
     if ((packet[15] & 0x80) == 0)
          imu_data_.ay = ((packet[15] << 8) + packet[16]);
     else
          imu_data_.ay = -32768 + ((packet[15] & 0x7F) << 8)+packet[16];
-    imu_data_.ay *= 1.5*2.0/32768.0*9.81; // m^2/s
+    imu_data_.ay *= -1.5*2.0/32768.0*9.81; // m^2/s
 
     if ((packet[17] & 0x80) == 0)
          imu_data_.az = ((packet[17] << 8) + packet[18]);
     else
          imu_data_.az = -32768 + ((packet[17] & 0x7F) << 8)+packet[18];
-    imu_data_.az *= 1.5*2.0/32768.0*9.81; // m^2/s
+    imu_data_.az *= -1.5*2.0/32768.0*9.81; // m^2/s
 
     if ((packet[19] & 0x80) == 0)
          imu_data_.xmag = ((packet[19] << 8) + packet[20]);
@@ -568,7 +555,6 @@ void XBOW4X::parseAngleMode(unsigned char *packet) { //ANGLE MODE
     imu_data_.boardtemp = (imu_data_.boardtemp*5.0/4096.0-1.375)*44.4;
 
     imu_data_.counter = (packet[27] <<8) + packet[28];
-
 }
 
 
@@ -597,19 +583,19 @@ void XBOW4X::parseScaledMode(unsigned char *packet) { //SCALE MODE
          imu_data_.ax = ((packet[7] << 8) + packet[8]);
     else
          imu_data_.ax = -32768 +((packet[7] & 0x7F) << 8)+packet[8];
-    imu_data_.ax *= 1.5*2.0/32768.0*9.81; // m^2/s
+    imu_data_.ax *= -1.5*2.0/32768.0*9.81; // m^2/s //Negative ROS Convention
 
     if ((packet[9] & 0x80) == 0)
          imu_data_.ay = ((packet[9] << 8) + packet[10]);
     else
          imu_data_.ay = -32768 + ((packet[9] & 0x7F) << 8)+packet[10];
-    imu_data_.ay *= 1.5*2.0/32768.0*9.81; // m^2/s
+    imu_data_.ay *= -1.5*2.0/32768.0*9.81; // m^2/s //Negative ROS Convention
 
     if ((packet[11] & 0x80) == 0)
          imu_data_.az = ((packet[11] << 8) + packet[12]);
     else
          imu_data_.az = -32768 + ((packet[11] & 0x7F) << 8)+packet[12];
-    imu_data_.az *= 1.5*2.0/32768.0*9.81; // m^2/s
+    imu_data_.az *= -1.5*2.0/32768.0*9.81; // m^2/s //Negative ROS Convention
 
     if ((packet[13] & 0x80) == 0)
          imu_data_.xmag = ((packet[13] << 8) + packet[14]);
@@ -654,15 +640,15 @@ void XBOW4X::parseVoltageMode(unsigned char *packet) { //VOLTAGE MODE
 
     imu_data_.ax = ((packet[7] << 8) + packet[8]);
     imu_data_.ax *= 5/4096.0;
-    imu_data_.ax = (imu_data_.ax-2.512)*1.01*9.81; // m^2/s
+    imu_data_.ax = -(imu_data_.ax-2.512)*1.01*9.81; // m^2/s //Negative ROS Convention
 
     imu_data_.ay = ((packet[9] << 8) + packet[10]);
     imu_data_.ay *= 5/4096.0;
-    imu_data_.ay = (imu_data_.ay-2.512)*1.01*9.81; // m^2/s
+    imu_data_.ay = -(imu_data_.ay-2.512)*1.01*9.81; // m^2/s //Negative ROS Convention
 
     imu_data_.az = ((packet[11] << 8) + packet[12]);
     imu_data_.az *= 5/4096.0;
-    imu_data_.az = (imu_data_.az-2.512)*1.01*9.81; // m^2/s
+    imu_data_.az = -(imu_data_.az-2.512)*1.01*9.81; // m^2/s //Negative ROS Convention
 
     imu_data_.xmag = ((packet[13] << 8) + packet[14]);
     imu_data_.xmag *= 5/4096.0;
