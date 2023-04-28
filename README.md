@@ -29,7 +29,18 @@ sudo chmod 666 /dev/ttyUSB1
 ```
 As a permanent alternative it is possible to set udev rules for your serial adaptor.
 
+## ROS Topics
+
+The read sensor measures are published on a different topic:
+- /microstrain_3dmgx2_imu/imu/data: publishes the scaled sensor measures of the acceleration, angular velocity, and orientation.
+- /microstrain_3dmgx2_imu/mag: publishes the scaled sensor measures of the magnetic field
+- /microstrain_3dmgx2_imu/imu/data_no_grab: publishes the scaled sensor measures of the acceleration without gravity component, angular velocity, and orientation.
+
+   Althought the IMU can be in different measurement type, the topics are the same and publish the same data, only chage how the sensor obtain that data. When the orientation
+   is not available, the identity quaternion is published.
+
 ## ROS Services
+Different node services in order to be able to use all IMU functionalities
 
 - send_command: allows to send commands to the IMU with which to activate the
  different operating modes, obtain data and sensor information.
@@ -58,5 +69,42 @@ Note: does not work as well as it should because the IMU make a response but the
  system with respect to the WORD reference system.
     Usage: broadcast_ft [true/false]
 
+## Params
+
+The node can be configured with different parameters that allow users to use the sensor as they need.
+    - port: serial port to read IMU data.
+    - baudrate: the baudrate with the IMU and the node make the communication
+    - frame_id: name of the local reference frame of the IMU.
+    - base_frame: name of the base reference frame with respect to the frame_id TF is published
+    - broadcast_tf: if true the node publishes the IMU TF (ENU or NED) with respect to the base frame.
+    - use_enu_frame: if true the IMU data is published with respect ENU reference frame. The IMU printed frame not corresponds in this case. If false the NED reference frame is used and corresponds with the IMU printed frame.
+    - measurement_mode: Allows to select the mode which the IMU will use to configure the internal sensors
+        - a: Angle mode. Returns angular velocity, linear acceleration, magnetic field and the angles (roll, pitch and yaw). In this mode a Kalman Filter is used to filter the signal.
+        - c: Scaled Mode. Returns angular velocity, linear acceleration and magnetic field. This mode corrects the measurements.
+        - r: Voltage mode. Returns angular velocity, linear acceleration and magnetic field. The data are raw, uncorrected and uncalibrated.
+    - message_mode: Allows the IMU to publish the data continuously or pooling. To pool data see the services.
+        - P: Polling mode. If continuous mode is active, stops it and activates polling mode. The G command is used to poll packets.
+        - C: Continuous mode. Returns data packets at a frequency of 60 Hz.
+
+The file imu_params.yaml contains different interesting matrices. The covariance matrices are calculated by obtaining data with the IMU immobile.
+  - tf_translation: translation vector of the IMU reference frame with respect to the ENU frame called world
+  - orientation_cov: covariance matrix of the covariance of the Euler angles obtained from de IMU
+  - ang_vel_cov: covariance matrix of the scaled angular velocity
+  - lin_acc_cov: covariance matrix of the scaled linear acceleration
+  - lin_acc_cov_no_grab: covariance matrix of the scaled linear acceleration without the gravity component
+  - mag_cov: covariance matrix of the scaled magnetic field vector
 More details in the AHRS400CC-100 documentation.
 
+## Test
+
+To check the working rate of the IMU it is possible to use the ../diagnostics topic. 
+
+To make a node test use: 
+
+`rosrun self_test run_selftest /self_test`
+
+or 
+
+`rosservice call /self_test`
+
+with the node runnig. 

@@ -50,9 +50,9 @@
 using namespace std;
 
 // Boost Headers
-#include <boost/function.hpp>
-#include <boost/thread.hpp>
-#include <boost/bind.hpp>
+//#include <boost/function.hpp>
+//#include <boost/thread.hpp>
+//#include <boost/bind.hpp>
 
 // Serial Header
 #include "serial/serial.h"
@@ -65,17 +65,17 @@ namespace xbow4x{
 enum class MeasurementType{None,AngleMode='a',ScaledMode='c',VoltageMode='r'};
 enum class MessageMode{None,Continous='C',Poll='P'};
 
-union ShortsUnion {
-    signed short ssdata;
-    unsigned short usdata; //packets
-    char cdata[2];
-};
+//union ShortsUnion {
+//    signed short ssdata;
+//    unsigned short usdata; //packets
+//    char cdata[2];
+//};
 
-union IntsUnion {
-    signed int sidata;
-    unsigned short usdata; //packets
-    char cdata[4];
-};
+//union IntsUnion {
+//    signed int sidata;
+//    unsigned short usdata; //packets
+//    char cdata[4];
+//};
 
 
 //accelerations and turning rates
@@ -115,7 +115,7 @@ public:
      * @throws ConnectionFailedException connection attempt failed.
      * @throws UnknownErrorCodeException unknown error code returned.
      */
-    bool connect(std::string port, int baudrate=115200, long timeout=50);
+    void connect(std::string port, int baudrate=115200, long timeout=50);
 
    /*!
     * Disconnects from the serial port
@@ -130,7 +130,7 @@ public:
      * \param command string of a one character that contains the command to be send
      * \param returnMessage message returned to show to the user
      */
-    int sendCommand(u_int8_t command, string &returnMessage);
+    string sendCommand(u_int8_t command);
 
     /*!
      * Send a command to the IMU to calibrate the magnetometer
@@ -139,7 +139,7 @@ public:
      * \param command string of a one character that contains the command to be send
      * \param returnMessage message returned to show to the user
      */
-    int calibrateCommand(u_int8_t command, string &returnMessage);
+    string calibrateCommand(u_int8_t command);
 
 
     /*!
@@ -149,7 +149,7 @@ public:
      * \param command string of a one character that contains the command to be send
      * \param returnMessage message returned to show to the user
      */
-    int setBaudrate(u_int32_t baudrate, string &returnMessage);
+    string setBaudrate(u_int32_t baudrate, string &returnMessage);
 
     MeasurementType getMeasurementType() const;
 
@@ -180,17 +180,7 @@ private:
     */
     void stopContinousReading();
 
-   /*!
-    * Parses a packet of data from the IMU in angle measurement type.  Scale factors are
-    * also applied to the data to convert into engineering units.
-    */
-    ImuData parseAngleMode(unsigned char *packet);
 
-    /*!
-     * Parses a packet of data from the IMU in scale measurement type.  Scale factors are
-     * also applied to the data to convert into engineering units.
-     */
-     void parseScaledMode(unsigned char *packet);
 
      /*!
       * Reopens the serial port and cleans it
@@ -212,8 +202,7 @@ private:
     * being received.
     */  
     size_t read_size_;
-    //! shared pointer to Boost thread for listening for data from xbow 
-    boost::shared_ptr<boost::thread> read_thread_ptr_;  
+
     bool reading_status_;  //!< True if the read thread is running, false otherwise.
     MeasurementType measurementType; //!< Measurements type
     MessageMode messageMode;
@@ -228,6 +217,18 @@ private:
      */
     void parseVoltageMode(unsigned char *packet);
 
+
+    /*!
+     * Parses a packet of data from the IMU in angle measurement type.  Scale factors are
+     * also applied to the data to convert into engineering units.
+     */
+     void parseAngleMode(unsigned char *packet);
+
+     /*!
+      * Parses a packet of data from the IMU in scale measurement type.  Scale factors are
+      * also applied to the data to convert into engineering units.
+      */
+      void parseScaledMode(unsigned char *packet);
 
 };
 

@@ -11,6 +11,8 @@ find_package(catkin REQUIRED COMPONENTS
   tf2
   tf2_ros
   message_generation
+  self_test
+  diagnostic_updater
 )
 
 add_service_files(
@@ -42,7 +44,7 @@ find_package(Boost REQUIRED COMPONENTS thread system)
 catkin_package(
  INCLUDE_DIRS include
  LIBRARIES xbow4x
- CATKIN_DEPENDS message_runtime roscpp sensor_msgs serial tf2
+ CATKIN_DEPENDS message_runtime roscpp sensor_msgs serial tf2 self_test diagnostic_updater
  # DEPENDS system_lib
 )
 
