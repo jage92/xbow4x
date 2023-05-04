@@ -53,8 +53,8 @@ private:
   sensor_msgs::Imu msg, msg_no_grab; //! Message to public the IMU topic
   sensor_msgs::MagneticField msgmag; //! Message to public the Magnetometec topic
 
-  double ang_vel_mean[3]; //! Array of the algular rate bias
-  double lin_acc_mean_no_grab[3]; //! Array of the linear acceleration whiout gravity
+  double ang_vel_mean[3]={0.0,0.0,0.0}; //! Array of the algular rate bias
+  double lin_acc_mean_no_grab[3]={0.0,0.0,0.0}; //! Array of the linear acceleration whiout gravity
 
   bool is_initialized=false; //! Flag that indicates if the xbow is initialized
   bool imu_started=false; //! Flag that indicates if the xbow is strated
@@ -201,7 +201,7 @@ public:
     catch(const char* error) {
       ROS_ERROR("%s",error);
       error_count_++;
-      diagnostic_.broadcast(2, "IMU ERROR: "+string(error));
+      diagnostic_.broadcast(diagnostic_msgs::DiagnosticStatus::ERROR, "IMU ERROR: "+string(error));
       node_handle.shutdown();
       exit(1);
     }
@@ -213,13 +213,13 @@ public:
     self_test_.add("Interruption Test", this, &Xbow4xNode::interruptionTest);
     self_test_.add("Connect Test", this, &Xbow4xNode::connectTest);
     self_test_.add("Read ID Test", this, &Xbow4xNode::readIDTest);
-    self_test_.add("Streamed Data Test", this, &Xbow4xNode::streamedDataTest);
     self_test_.add("Gyro Bias Test", this, &Xbow4xNode::biasTest);
+    self_test_.add("Streamed Data Test", this, &Xbow4xNode::streamedDataTest);
     self_test_.add("Gravity Test", this, &Xbow4xNode::gravityTest);
     self_test_.add("Disconnect Test", this, &Xbow4xNode::disconnectTest);
     self_test_.add("Resume Test", this, &Xbow4xNode::resumeTest);
 
-    wallTimer = node_handle.createWallTimer(ros::WallDuration(int(1/desired_freq_)),&Xbow4xNode::wallTimerCallback,this,false,true);
+    wallTimer = node_handle.createWallTimer(ros::WallDuration(0),&Xbow4xNode::wallTimerCallback,this,false,true);
 
   }
 
@@ -231,7 +231,7 @@ public:
   void setWorkFrecuency() {
     switch (measurementMode) {
     case xbow4x::MeasurementType::AngleMode:
-      desired_freq_=65.0;
+      desired_freq_=60.0;
       break;
     case xbow4x::MeasurementType::ScaledMode:
       desired_freq_=120.0;
@@ -356,11 +356,11 @@ public:
       xbow.sendCommand('R');
       xbow.sendCommand((u_int8_t)measurementMode);
       xbow.sendCommand('C');
-    }
-    catch(const char* error) {
-      ROS_ERROR("%s",error);
-      status.summary(2, "Could not start streaming data: "+string(error));
-    }
+//    }
+//    catch(const char* error) {
+//      ROS_ERROR("%s",error);
+//      status.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "Could not start streaming data: "+string(error));
+//    }
     for(int i=0;i<it;i++){
       xbow4x::ImuData data = xbow.readSerialPort();
 
@@ -388,7 +388,7 @@ public:
     magnetic[X]/=it;
     magnetic[Y]/=it;
     magnetic[Z]/=it;
-    try {
+//    try {
       xbow.sendCommand('P');
     }
     catch(const char* error) {
@@ -430,7 +430,7 @@ public:
     }
     catch(const char* error) {
       ROS_ERROR("%s",error);
-      status.summary(2, "Could not start streaming data: "+string(error));
+      status.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "Could not start streaming data: "+string(error));
     }
     start_time = ros::Time::now();
     while(ros::Time::now() - start_time < ros::Duration(10.0)){
@@ -440,7 +440,7 @@ public:
     try{
       xbow.sendCommand('P');
 
-      status.summary(0, "Successfully calculated gyro biases.");
+      status.summary(diagnostic_msgs::DiagnosticStatus::OK, "Successfully calculated gyro biases.");
 
       status.add("Gyro Bias X",ang_vel_mean[X]);
       status.add("Gyro Bias Y", ang_vel_mean[Y]);
@@ -494,9 +494,9 @@ public:
 
       if (fabs(err) < .05)
       {
-        status.summary(0, "Gravity detected correctly.");
+        status.summary(diagnostic_msgs::DiagnosticStatus::OK, "Gravity detected correctly.");
       } else {
-        status.summaryf(2, "Measured gravity deviates by %f", err);
+        status.summaryf(diagnostic_msgs::DiagnosticStatus::ERROR, "Measured gravity deviates by %f", err);
       }
 
       status.add("Measured gravity", grav);
@@ -504,7 +504,7 @@ public:
     }
     catch(const char* error) {
       ROS_ERROR("%s",error);
-      status.summary(2, "Could not be done the gravity test: "+string(error));
+      status.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "Could not be done the gravity test: "+string(error));
     }
   }
 
@@ -517,7 +517,7 @@ public:
   {
     xbow.disconnect();
 
-    status.summary(0, "Disconnected successfully.");
+    status.summary(diagnostic_msgs::DiagnosticStatus::OK, "Disconnected successfully.");
   }
 
 
@@ -538,12 +538,12 @@ public:
       }
       catch(const char *error) {
         ROS_ERROR("%s",error);
-        status.summary(2, "Could not be done the resume test.");
+        status.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "Could not be done the resume test.");
       }
 
     }
 
-    status.summary(0, "Previous operation resumed successfully.");
+    status.summary(diagnostic_msgs::DiagnosticStatus::OK, "Previous operation resumed successfully.");
   }
 
   /**
@@ -585,14 +585,17 @@ public:
 
   void deviceStatus(diagnostic_updater::DiagnosticStatusWrapper &status) {
 
-    status.summary(0, "IMU STATUS:" + this->status());
+    status.summary(diagnostic_msgs::DiagnosticStatus::OK, "IMU STATUS:" + this->status());
 
     status.add("Device", port_name);
     status.add("TF frame", frame_id);
     status.add("Base frame", base_frame);
     status.add("Error count", error_count_);
     status.add("Measurement and Message Modes",this->status());
-    use_enu_frame ? status.add("ENU FRAME","Yes") : status.add("ENU FRAME","No");
+    status.add("ENU Frame",use_enu_frame);
+    status.add("Publis TF",broadcats_tf);
+    status.add("Calibrating",!is_initialized);
+
 
   }
 
@@ -602,15 +605,21 @@ public:
    */
   void calibrationStatus(diagnostic_updater::DiagnosticStatusWrapper& status)
   {
-    status.summary(0, "IMU CALIBRATION");
+    if(imu_started && !is_initialized)
+      status.summary(diagnostic_msgs::DiagnosticStatus::OK,"IMU is calibrating");
+    else if(is_initialized) {
+      status.summary(diagnostic_msgs::DiagnosticStatus::OK,"IMU is calibrated");
 
-    status.add("Gyro Bias X",ang_vel_mean[X]);
-    status.add("Gyro Bias Y", ang_vel_mean[Y]);
-    status.add("Gyro Bias Z", ang_vel_mean[Z]);
+      status.add("Gyro Bias X",ang_vel_mean[X]);
+      status.add("Gyro Bias Y", ang_vel_mean[Y]);
+      status.add("Gyro Bias Z", ang_vel_mean[Z]);
 
-    status.add("Linear Accel Bias X",lin_acc_mean_no_grab[X]);
-    status.add("Linear Accel Bias Y", lin_acc_mean_no_grab[Y]);
-    status.add("Linear Accel Bias Z", lin_acc_mean_no_grab[Z]);
+      status.add("Linear Accel Bias X",lin_acc_mean_no_grab[X]);
+      status.add("Linear Accel Bias Y", lin_acc_mean_no_grab[Y]);
+      status.add("Linear Accel Bias Z", lin_acc_mean_no_grab[Z]);
+    }
+    else
+      status.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "IMU not calibrated");
   }
 
 
@@ -707,7 +716,8 @@ public:
     }
     catch(const char* error) {
       ROS_WARN("%s",error);
-      diagnostic_.broadcast(2, "Could not start streaming data: "+string(error));
+      error_count_++;
+      diagnostic_.broadcast(diagnostic_msgs::DiagnosticStatus::ERROR, "Could not start streaming data: "+string(error));
     }
 
     angularRate[X] = data.rollrate;
@@ -838,7 +848,7 @@ public:
     }
     catch(const char* error) {
       error_count_++;
-      diagnostic_.broadcast(2, "IMU ERROR: "+string(error));
+      diagnostic_.broadcast(diagnostic_msgs::DiagnosticStatus::ERROR, "IMU ERROR: "+string(error));
       ROS_ERROR("%s",error);
       throw std::runtime_error(error);
       return false;
@@ -877,7 +887,7 @@ public:
         }
         catch(const char* error) {
           error_count_++;
-          diagnostic_.broadcast(2, "IMU ERROR:: "+string(error));
+          diagnostic_.broadcast(diagnostic_msgs::DiagnosticStatus::ERROR, "IMU ERROR:: "+string(error));
           ROS_ERROR("%s",error);
           throw std::runtime_error(error);
           return false;
@@ -944,7 +954,7 @@ public:
           }
         }
         catch(const char* error) {
-          diagnostic_.broadcast(2, "IMU ERROR:: "+string(error));
+          diagnostic_.broadcast(diagnostic_msgs::DiagnosticStatus::ERROR, "IMU ERROR:: "+string(error));
           ROS_ERROR("%s",res.response.c_str());
           return true;
         }
@@ -987,7 +997,7 @@ public:
         wallTimer.stop();
       }
       catch(const char* error) {
-        diagnostic_.broadcast(1, "IMU ERROR:: "+string(error));
+        diagnostic_.broadcast(diagnostic_msgs::DiagnosticStatus::WARN, "IMU WARN: "+string(error));
         ROS_ERROR("%s",s.c_str());
       }
     }
