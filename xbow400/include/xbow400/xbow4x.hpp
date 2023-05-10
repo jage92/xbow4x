@@ -60,19 +60,6 @@ namespace xbow4x{
 enum class MeasurementType{None,AngleMode='a',ScaledMode='c',VoltageMode='r'};
 enum class MessageMode{None,Continous='C',Poll='P'};
 
-union ShortsUnion {
-    signed short ssdata;
-    unsigned short usdata; //packets
-    char cdata[2];
-};
-
-union IntsUnion {
-    signed int sidata;
-    unsigned short usdata; //packets
-    char cdata[4];
-};
-
-
 //accelerations and turning rates
 struct ImuData {
     int datatype; //1 for accels and turning rates, 2 for delta v's and delta thetas.
@@ -102,9 +89,7 @@ struct ImuData {
  *
  * @see XBOW4X::setDataHandler
  */
-//typedef boost::function<void(const xbow4x::ImuData&)> DataCallback;
-//typedef std::function<void (Xbow4xNode::*) (xbow4x::ImuData&)> DataCallback;
-//typedef void (*DataCallback)(xbow4x::ImuData&);
+
 class XBOW4X{
 public:
 
@@ -121,7 +106,7 @@ public:
      * @throws ConnectionFailedException connection attempt failed.
      * @throws UnknownErrorCodeException unknown error code returned.
      */
-    bool connect(std::string port, int baudrate=115200, long timeout=50);
+    void connect(std::string port, int baudrate=115200, long timeout=50);
 
    /*!
     * Disconnects from the serial port
@@ -135,7 +120,7 @@ public:
      * \param command string of a one character that contains the command to be send
      * \param returnMessage message returned to show to the user
      */
-    int sendCommand(u_int8_t command, string &returnMessage);
+    string sendCommand(u_int8_t command);
 
     /*!
      * Send a command to the IMU to calibrate the magnetometer
@@ -144,7 +129,7 @@ public:
      * \param command string of a one character that contains the command to be send
      * \param returnMessage message returned to show to the user
      */
-    int calibrateCommand(u_int8_t command, string &returnMessage);
+    string calibrateCommand(u_int8_t command);
 
 
     /*!
@@ -154,8 +139,7 @@ public:
      * \param command string of a one character that contains the command to be send
      * \param returnMessage message returned to show to the user
      */
-    int setBaudrate(u_int32_t baudrate, string &returnMessage);
-
+    string setBaudrate(u_int32_t baudrate);
     MeasurementType getMeasurementType() const;
 
     MessageMode getMessageMode() const;
@@ -163,7 +147,7 @@ public:
     /*!
      * Reads the serial port and check the checksum. If the packet is not correct discarts it.
      */
-    ImuData readSerialPortPollMode();
+    ImuData readSerialPort();
 
 private:
 
@@ -185,35 +169,6 @@ private:
     */
     void stopContinousReading();
 
-    /*!
-     * Pings the IMU to determine if it is properly connected
-     *
-     * This method sends a ping to the IMU and waits for a response.
-     *
-     * @param num_attempts The number of times to ping the device
-     * before giving up
-     * @param timeout The time in milliseconds to wait for each reponse
-     *
-     * @return True if the IMU was found, false if it was not.
-     *
-     * @see XBOW4X::DataCallback
-     */
-//     bool sync(int num_attempts=5);
-   /*!
-    * Method run in a seperate thread that continuously reads from the
-    * serial port.  When a complete packet is received, the parse
-    * method is called to process the data
-    *
-    * @see XBOW4X::XBOW4X::Parse, XBOW4X::XBOW4X::StartReading, XBOW4X::XBOW4X::StopReading
-    */
-    void readSerialPortContinuousMode();
-
-   /*!
-    * Resynchronizes the serial port so that each read of a set number
-    * of bytes returns a complete data packet.
-    */
-//    void resync();
-
    /*!
     * Parses a packet of data from the IMU in angle measurement type.  Scale factors are
     * also applied to the data to convert into engineering units.
@@ -227,6 +182,12 @@ private:
      void parseScaledMode(unsigned char *packet);
 
      /*!
+      * Parses a packet of data from the IMU in voltage measurement type.  Scale factors are
+      * also applied to the data to convert into engineering units.
+      */
+     void parseVoltageMode(unsigned char *packet);
+
+     /*!
       * Reopens the serial port and cleans it
       *
       */
@@ -236,8 +197,6 @@ private:
     serial::Serial *serial_port_;
     //! most recently parsed IMU data
     ImuData imu_data_;
-//    ShortsUnion s1contents;    //!< union for converting bytes to shorts
-//    IntsUnion s2contents;    //!< union for converting bytes to ints
 
    /*!
     * The number of bytes read during each call to read on the serial
@@ -255,15 +214,6 @@ private:
     bool calibrationModeEnabled; //! Indicates if calibration mode is started
     rclcpp::Logger logger_;
     rclcpp::Clock clock;
-
-
-
-    /*!
-     * Parses a packet of data from the IMU in voltage measurement type.  Scale factors are
-     * also applied to the data to convert into engineering units.
-     */
-    void parseVoltageMode(unsigned char *packet);
-
 
 };
 

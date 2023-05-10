@@ -15,20 +15,10 @@ find_package(sensor_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
-find_package(xbow400 REQUIRED)
-
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
-
-rosidl_generate_interfaces(${PROJECT_NAME}
-    "srv/BroadcastTf.srv"
-    "srv/SendCommand.srv"
-    "srv/Status.srv"
-    "srv/Calibrate.srv"
-    "srv/SetBaudrate.srv"
-)
+find_package(xbow400_interfaces REQUIRED)
+find_package(self_test REQUIRED)
+find_package(diagnostic_updater REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 
 add_executable(xbow4x_node
     src/xbow4x.cpp
@@ -39,11 +29,11 @@ target_include_directories(xbow4x_node
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
-#ament_target_dependencies(xbow4x_node rclcpp serial sensor_msgs tf2_ros)
-#ament_target_dependencies(xbow4x_node rclcpp serial sensor_msgs tf2_ros tf2_geometry_msgs geometry_msgs)
+
+
 ament_target_dependencies(xbow4x_node
     rclcpp
-    xbow400
+    xbow400_interfaces
     std_msgs
     geometry_msgs
     serial
@@ -51,13 +41,47 @@ ament_target_dependencies(xbow4x_node
     tf2
     tf2_ros
     tf2_geometry_msgs
+    self_test
+    diagnostic_updater
+    diagnostic_msgs
+)
+
+ament_export_dependencies(
+    rclcpp
+    xbow400_interfaces
+    std_msgs
+    geometry_msgs
+    serial
+    sensor_msgs
+    tf2
+    tf2_ros
+    tf2_geometry_msgs
+    self_test
+    diagnostic_updater
+    diagnostic_msgs
 )
 
 
-
 install(TARGETS
-  xbow4x_node
-  DESTINATION lib/${PROJECT_NAME})
+    xbow4x_node
+    DESTINATION lib/${PROJECT_NAME})
+
+# Install launch files.
+install(DIRECTORY
+    launch
+    DESTINATION share/${PROJECT_NAME}/
+)
+
+# Install params files.
+install(DIRECTORY
+  params
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+install(DIRECTORY
+    include
+    DESTINATION include/${PROJECT_NAME}
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
