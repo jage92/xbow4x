@@ -1,12 +1,8 @@
-# Orientation, angular velocity and linear acceleration covariance matrices
-# Calculated with a rosbag with the IMU static
-
-#Convariance of the euler angles
-xbow4x_node:
+/xbow400/xbow4x_node:
     ros__parameters:
         tf_translation: [1.0, 2.0, 0.0]
-        orientation_cov: [  0.0041e-4,  0.0,    0.0, 0.0,    0.0032e-4,  0.0, 0.0,    0.0,    0.1662e-4]
-        ang_vel_cov: [  0.2627e-4, 0.0,    0.0, 0.0,    0.2076e-4, 0.0, 0.0,    0.0,    0.2335e-4]
-        lin_acc_cov: [  0.1610e-3, 0.0,    0.0, 0.0,    0.0675e-3, 0.0, 0.0,    0.0,    0.1974e-3]
-        lin_acc_cov_no_grab: [  0.1856e-3, 0.0,    0.0, 0.0,    0.0620e-3, 0.0, 0.0,    0.0,    0.1956e-3]
-        mag_cov: [  1.2198e-5, 0.0,    0.0, 0.0,    4.1285e-6, 0.0, 0.0,    0.0,    1.1703e-5]
+        orientation_cov: [0.0041e-4, 0.0, 0.0, 0.0, 0.0032e-4, 0.0, 0.0, 0.0, 0.1662e-4]
+        ang_vel_cov: [0.2627e-4, 0.0, 0.0, 0.0, 0.2076e-4, 0.0, 0.0, 0.0, 0.2335e-4]
+        lin_acc_cov: [0.1610e-3, 0.0, 0.0, 0.0, 0.0675e-3, 0.0, 0.0, 0.0, 0.1974e-3]
+        lin_acc_cov_no_grab: [0.1856e-3, 0.0, 0.0, 0.0, 0.0620e-3, 0.0, 0.0, 0.0, 0.1956e-3]
+        mag_cov: [1.2198e-5, 0.0, 0.0, 0.0, 4.1285e-6, 0.0, 0.0, 0.0, 1.1703e-5]

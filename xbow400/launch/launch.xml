@@ -1,10 +1,10 @@
 <launch>  
-  <node name="xbow4x_node" pkg="xbow400" exec="xbow4x_node" output="screen">
+  <node pkg="xbow400" exec="xbow4x_node" name="xbow4x_node" output="screen" namespace="xbow400">
     <param name="port" value="/dev/ttyUSB0"/>
     <param name="baudrate" value="38400"/>
     <param name="broadcast_tf" value="true"/>
-    <param name="frame_id"  value="imu"/>
-    <param name="base_frame" value="base"/> <!-- NED or ENU depending of use_enu_frame flag -->
+    <param name="frame_id"  value="imu_xbow"/>
+    <param name="base_frame" value="base_xbow"/> <!-- NED or ENU depending of use_enu_frame flag -->
     <param name="use_enu_frame" value="false"/> <!-- ENU NOT CORRESPOND WITH THE PRINTED REFERENCE FRAME IN THE IMU -->
     <param name="measurement_mode" value="a"/> <!-- Angle Mode: a Scaled Mode: c Voltage Mode: r -->
     <param name="message_mode" value="C"/> <!-- Continuous Mode: C Poll Mode: P -->

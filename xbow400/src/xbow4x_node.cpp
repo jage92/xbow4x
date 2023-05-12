@@ -141,13 +141,13 @@ public:
 
     tf_translation = this->get_parameter("tf_translation").get_parameter_value().get<vector<double>>();
 
-
     this->declare_parameter("orientation_cov",vector<double>({1.0e6,  0.0,    0.0,
                                                               0.0, 1.0e6, 0.0,
                                                               0.0, 0.0, 1.0e6}));
 
 
     orientation_cov = this->get_parameter("orientation_cov").get_parameter_value().get<vector<double>>();
+
 
     std::copy_n(orientation_cov.begin(),orientation_cov.size(),msg.orientation_covariance.begin());
     std::copy_n(orientation_cov.begin(),orientation_cov.size(),msg_no_grab.orientation_covariance.begin());
@@ -892,7 +892,6 @@ public:
     }
     else
       res->response="The IMU is initializing, please try again later";
-    return true;
     return true;
   }
 
