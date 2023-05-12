@@ -138,7 +138,7 @@ MeasurementType XBOW4X::getMeasurementType() const
   return measurementType;
 }
 
-string XBOW4X::setBaudrate(u_int32_t baudrate, string &returnMessage) {
+string XBOW4X::setBaudrate(u_int32_t baudrate) {
 
   string s;
   u_int8_t command;

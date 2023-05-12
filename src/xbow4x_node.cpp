@@ -18,7 +18,6 @@
 #include "diagnostic_updater/update_functions.h"
 #include "diagnostic_updater/DiagnosticStatusWrapper.h"
 
-//#include <boost/bind.hpp>
 
 #include "xbow4x/broadcast_tf.h"
 #include "xbow4x/send_command.h"
@@ -248,7 +247,6 @@ public:
     freq_diag_->clear();
     diagnostic_.add( *(freq_diag_.get()));
 
-    wallTimer.setPeriod(ros::WallDuration(int(1/desired_freq_)));
     wallTimer.start();
   }
 
@@ -462,9 +460,6 @@ public:
    */
   void gravityTest(diagnostic_updater::DiagnosticStatusWrapper& status)
   {
-    uint64_t time;
-    double accel[3];
-    double angrate[3];
 
     double grav = 0.0;
 
@@ -699,7 +694,7 @@ public:
     geometry_msgs::TransformStamped transformStamped;
     tf2::Vector3 g_w={0.0,0.0,-9.81},g_b,a_b;
     tf2::Quaternion q(0.0,0.0,0.0,1.0);
-    double angularRate[3],accel[3],accel_no_grab[3],magnetic[3];
+    double angularRate[3],accel[3],magnetic[3];
     xbow4x::ImuData data;
 
     if(!imu_started) {
@@ -844,7 +839,7 @@ public:
   bool setBaudrate(xbow4x::set_baudrateRequest &req, xbow4x::set_baudrateResponse &res) {
 
     try {
-      xbow.setBaudrate(req.baudrate,res.response);
+      res.response=xbow.setBaudrate(req.baudrate);
     }
     catch(const char* error) {
       error_count_++;

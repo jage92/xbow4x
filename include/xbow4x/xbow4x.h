@@ -149,7 +149,7 @@ public:
      * \param command string of a one character that contains the command to be send
      * \param returnMessage message returned to show to the user
      */
-    string setBaudrate(u_int32_t baudrate, string &returnMessage);
+    string setBaudrate(u_int32_t baudrate);
 
     MeasurementType getMeasurementType() const;
 
