@@ -1,6 +1,6 @@
 <launch>  
   <node pkg="xbow400" exec="xbow4x_node" name="xbow4x_node" output="screen" namespace="xbow400">
-    <param name="port" value="/dev/ttyUSB0"/>
+    <param name="port" value="/dev/crossbow"/>
     <param name="baudrate" value="38400"/>
     <param name="broadcast_tf" value="true"/>
     <param name="frame_id"  value="imu_xbow"/>
@@ -8,6 +8,7 @@
     <param name="use_enu_frame" value="false"/> <!-- ENU NOT CORRESPOND WITH THE PRINTED REFERENCE FRAME IN THE IMU -->
     <param name="measurement_mode" value="a"/> <!-- Angle Mode: a Scaled Mode: c Voltage Mode: r -->
     <param name="message_mode" value="C"/> <!-- Continuous Mode: C Poll Mode: P -->
+    <param name="euler" value="false"/> <!-- Only available in Angle Mode -->
     <param from="$(find-pkg-share xbow400)/params/imu_params.yaml" />
   </node>
  </launch>

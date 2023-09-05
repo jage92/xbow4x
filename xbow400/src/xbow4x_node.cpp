@@ -6,8 +6,9 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_ros/transform_broadcaster.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include "std_srvs/srv/empty.hpp"
 
 #include "diagnostic_msgs/srv/self_test.hpp"
 #include "self_test/test_runner.hpp"
@@ -25,6 +26,8 @@
 #include "xbow400_interfaces/srv/set_baudrate.hpp"
 #include "xbow400_interfaces/srv/status.hpp"
 
+#include "xbow400_interfaces/msg/euler_stamped.hpp"
+
 #define X 0 //! Index of the first element of array that corresponds to x component of a point
 #define Y 1 //! Index of the first element of array that corresponds to y component of a point
 #define Z 2 //! Index of the first element of array that corresponds to z component of a point
@@ -37,6 +40,12 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub; //! Publisher object of the IMU data (angular rate, acceleration, orientation)
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_no_grab_pub; //! Publisher object of the IMU data (angular rate whiout gravity, acceleration, orientation)
   rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr mag_pub; //! Publisher object of the magnetometer (magnetic field vector)
+  rclcpp::Publisher<xbow400_interfaces::msg::EulerStamped>::SharedPtr euler_pub; //! //! Publisher of the euler angles
+
+  sensor_msgs::msg::Imu imu_msg, imu_msg_no_grab; //! Message to public the IMU topic
+  sensor_msgs::msg::MagneticField msgmag; //! Message to public the Magnetometec topic
+  xbow400_interfaces::msg::EulerStamped eulerMsg; //! Message type for the orientation data (Euler Stamped)
+
 
   self_test::TestRunner self_test_; //! Object to test the IMU
   diagnostic_updater::Updater diagnostic_; //! Object that allows the IMU diagnostic
@@ -44,9 +53,6 @@ private:
 
   double desired_freq_; //! Working frecuency of the IMU to pass to self_test
   std::unique_ptr<diagnostic_updater::FrequencyStatus> freq_diag_; //! Self_test object to monitoring the IMU diagnosis
-
-  sensor_msgs::msg::Imu msg, msg_no_grab; //! Message to public the IMU topic
-  sensor_msgs::msg::MagneticField msgmag; //! Message to public the Magnetometec topic
 
   std::vector<double> ang_vel_mean={0.0,0.0,0.0}; //! Array of the algular rate bias
   std::vector<double>  lin_acc_mean_no_grab={0.0,0.0,0.0}; //! Array of the linear acceleration whiout gravity
@@ -59,6 +65,7 @@ private:
   bool is_initialized=false; //! Flag that indicates if the xbow is initialized
   bool imu_started=false; //! Flag that indicates if the xbow is strated
   bool broadcats_tf; //! Flag that indicates if the IMU reference frame is published or not
+  bool euler; //! Publish euler data in euler topic
   string frame_id; //! Name of the IMU frame
   int counter=0;
   bool use_enu_frame; //! Determines if the ENU frame is used or not
@@ -76,13 +83,23 @@ private:
   rclcpp::Service<xbow400_interfaces::srv::SendCommand>::SharedPtr sendCommandSrv;
   rclcpp::Service<xbow400_interfaces::srv::SetBaudrate>::SharedPtr setBaudrateSrv;
   rclcpp::Service<xbow400_interfaces::srv::Status>::SharedPtr statusSrv;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr start_calibrate_serv; //! Service to start magnetometer calibration
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr stop_calibrate_serv; //! Service to stop magnetometer calibration
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr poll_serv; //! Service to change the node to poll mode
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr continuous_serv; //!Service to change the node to continuous mode
+
+  rclcpp::Clock clock;
+
+  double temperature = 0.0;
+
+  bool calibrated=false;
+  bool calibrating=false;
 
 public:
 
   ~Xbow4xNode() {
     RCLCPP_INFO(this->get_logger(),"Serial Port Disconnected");
-
-    xbow->disconnect();
+    xbow->closePort();
   }
 
   Xbow4xNode() : Node("xbow4x_node"),
@@ -118,7 +135,7 @@ public:
     this->declare_parameter("broadcast_tf", true);
     broadcats_tf = this->get_parameter("broadcast_tf").get_parameter_value().get<bool>();
 
-    this->declare_parameter("use_enu_frame", true);
+    this->declare_parameter("use_enu_frame", false);
 
     use_enu_frame = this->get_parameter("use_enu_frame").get_parameter_value().get<bool>();
 
@@ -136,6 +153,12 @@ public:
     this->declare_parameter("message_mode","C"); //Continuous Mode
     messageMode = static_cast<xbow4x::MessageMode>(this->get_parameter("message_mode").get_parameter_value().get<string>().c_str()[0]);
 
+    this->declare_parameter("euler", true);
+    euler = this->get_parameter("euler").get_parameter_value().get<bool>();
+
+    if(euler && measurementMode == xbow4x::MeasurementType::AngleMode) {
+      euler_pub = this->create_publisher<xbow400_interfaces::msg::EulerStamped>("euler", 1);
+    }
 
     this->declare_parameter("tf_translation",vector<double>({1.0,  1.0,    0.0}));
 
@@ -149,8 +172,8 @@ public:
     orientation_cov = this->get_parameter("orientation_cov").get_parameter_value().get<vector<double>>();
 
 
-    std::copy_n(orientation_cov.begin(),orientation_cov.size(),msg.orientation_covariance.begin());
-    std::copy_n(orientation_cov.begin(),orientation_cov.size(),msg_no_grab.orientation_covariance.begin());
+    std::copy_n(orientation_cov.begin(),orientation_cov.size(),imu_msg.orientation_covariance.begin());
+    std::copy_n(orientation_cov.begin(),orientation_cov.size(),imu_msg_no_grab.orientation_covariance.begin());
 
 
     this->declare_parameter("ang_vel_cov",vector<double>({1.0e-2, 0.0,    0.0,
@@ -158,8 +181,8 @@ public:
                                                           0.0,    0.0,    1.0e-2}));
     ang_vel_cov = this->get_parameter("ang_vel_cov").get_parameter_value().get<vector<double>>();
 
-    std::copy_n(ang_vel_cov.begin(),ang_vel_cov.size(),msg.angular_velocity_covariance.begin());
-    std::copy_n(ang_vel_cov.begin(),ang_vel_cov.size(),msg_no_grab.angular_velocity_covariance.begin());
+    std::copy_n(ang_vel_cov.begin(),ang_vel_cov.size(),imu_msg.angular_velocity_covariance.begin());
+    std::copy_n(ang_vel_cov.begin(),ang_vel_cov.size(),imu_msg_no_grab.angular_velocity_covariance.begin());
 
 
     this->declare_parameter("lin_acc_cov",vector<double>({1.0e-2, 0.0,    0.0,
@@ -167,7 +190,7 @@ public:
                                                           0.0,    0.0,    1.0e-2}));
     lin_acc_cov = this->get_parameter("lin_acc_cov").get_parameter_value().get<vector<double>>();
 
-    std::copy_n(lin_acc_cov.begin(),lin_acc_cov.size(),msg.linear_acceleration_covariance.begin());
+    std::copy_n(lin_acc_cov.begin(),lin_acc_cov.size(),imu_msg.linear_acceleration_covariance.begin());
 
 
     this->declare_parameter("lin_acc_cov_no_grab",vector<double>({1.0e-2, 0.0,    0.0,
@@ -175,7 +198,7 @@ public:
                                                                   0.0,    0.0,    1.0e-2}));
     lin_acc_cov_no_grab = this->get_parameter("lin_acc_cov_no_grab").get_parameter_value().get<vector<double>>();
 
-    std::copy_n(lin_acc_cov_no_grab.begin(),lin_acc_cov_no_grab.size(),msg_no_grab.linear_acceleration_covariance.begin());
+    std::copy_n(lin_acc_cov_no_grab.begin(),lin_acc_cov_no_grab.size(),imu_msg_no_grab.linear_acceleration_covariance.begin());
 
     this->declare_parameter("mag_cov",vector<double>({1.0e-2, 0.0,    0.0,
                                                       0.0,    1.0e-2, 0.0,
@@ -187,42 +210,26 @@ public:
 
     broadcastTfSrv = this->create_service<xbow400_interfaces::srv::BroadcastTf>("broadcast_tf",std::bind(&Xbow4xNode::broadcatsTf_srv,this,std::placeholders::_1,std::placeholders::_2));
     statusSrv = this->create_service<xbow400_interfaces::srv::Status>("status",std::bind(&Xbow4xNode::status_srv,this,std::placeholders::_1,std::placeholders::_2));
-    setBaudrateSrv = this->create_service<xbow400_interfaces::srv::SetBaudrate>("set_baudrate",std::bind(&Xbow4xNode::setBaudrate_srv,this,std::placeholders::_1,std::placeholders::_2));
-    calibrateSrv = this->create_service<xbow400_interfaces::srv::Calibrate>("calibrate",std::bind(&Xbow4xNode::calibrate_srv,this,std::placeholders::_1,std::placeholders::_2));
+//    setBaudrateSrv = this->create_service<xbow400_interfaces::srv::SetBaudrate>("set_baudrate",std::bind(&Xbow4xNode::setBaudrate_srv,this,std::placeholders::_1,std::placeholders::_2));
+    calibrateSrv = this->create_service<xbow400_interfaces::srv::Calibrate>("calibrateCommand",std::bind(&Xbow4xNode::calibrate_srv,this,std::placeholders::_1,std::placeholders::_2));
     sendCommandSrv = this->create_service<xbow400_interfaces::srv::SendCommand>("send_command",std::bind(&Xbow4xNode::sendCommand_srv,this,std::placeholders::_1,std::placeholders::_2));
+    poll_serv = this->create_service<std_srvs::srv::Empty>("poll",std::bind(&Xbow4xNode::poll, this,std::placeholders::_1,std::placeholders::_2));
+    continuous_serv = this->create_service<std_srvs::srv::Empty>("continuous",std::bind(&Xbow4xNode::continuous, this,std::placeholders::_1,std::placeholders::_2));
+    start_calibrate_serv = this->create_service<std_srvs::srv::Empty>("start_calibrate",std::bind(&Xbow4xNode::start_calibrate, this,std::placeholders::_1,std::placeholders::_2));
+    stop_calibrate_serv = this->create_service<std_srvs::srv::Empty>("stop_calibrate", std::bind(&Xbow4xNode::stop_calibrate, this,std::placeholders::_1,std::placeholders::_2));
+
+
     timer = rclcpp::create_timer(this,this->get_clock(),10s, std::bind(&Xbow4xNode::timerCallback,this));
 
     q_rot.setRPY(M_PI,0,M_PI/2); //ENU
     q_rot.normalize();
 
-    xbow = std::make_shared<xbow4x::XBOW4X>(this->get_logger());
-
-    try{
-      xbow->connect(port_name, baudrate);
-
-      xbow->sendCommand('R');
-
-      diagnostic_.setHardwareID(getID());
-
-      xbow->sendCommand((u_int8_t)measurementMode);
-
-
-      //First in continous mode to calculate de bias
-      xbow->sendCommand((u_int8_t)xbow4x::MessageMode::Continous);
-
-    }
-    catch(const char* error) {
-      RCLCPP_ERROR(this->get_logger(),"%s",error);
-      error_count_++;
-      diagnostic_.broadcast(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "IMU ERROR: "+string(error));
-      rclcpp::shutdown();
-      exit(1);
-    }
-
     wallTimer = this->create_wall_timer(0ms,std::bind(&Xbow4xNode::wallTimerCallback,this));
+    wallTimer->cancel();
 
-    diagnostic_.add( "Calibration Status", this, &Xbow4xNode::calibrationStatus);
+    diagnostic_.add( "Bias Status", this, &Xbow4xNode::biasStatus);
     diagnostic_.add( "IMU Status", this, &Xbow4xNode::deviceStatus);
+    diagnostic_.add( "Calibration Status", this, &Xbow4xNode::calibrationStatus);
     setWorkFrecuency();
 
     self_test_.add("Interruption Test", this, &Xbow4xNode::interruptionTest);
@@ -234,6 +241,31 @@ public:
     self_test_.add("Disconnect Test", this, &Xbow4xNode::disconnectTest);
     self_test_.add("Resume Test", this, &Xbow4xNode::resumeTest);
 
+//    this->get_logger().set_level(rclcpp::Logger::Level::Debug);
+
+    xbow = std::make_shared<xbow4x::XBOW4X>(this->get_logger());
+
+    try{
+      xbow->openPort(port_name.c_str(), baudrate);
+
+      xbow->sendCommand('R');
+
+      diagnostic_.setHardwareID(getID());
+
+      xbow->sendCommand((u_int8_t)measurementMode);
+
+
+      //First in continous mode to calculate de bias
+      xbow->sendCommand((u_int8_t)xbow4x::MessageMode::Continous);
+      wallTimer->reset();
+    }
+    catch(const char* error) {
+      RCLCPP_ERROR(this->get_logger(),"%s",error);
+      error_count_++;
+      diagnostic_.broadcast(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "IMU ERROR: "+string(error));
+      rclcpp::shutdown();
+      exit(1);
+    }
   }
 
 
@@ -246,7 +278,7 @@ public:
     if (is_initialized)
     {
       try {
-        xbow->connect(port_name, baudrate);
+        xbow->openPort(port_name.c_str(), baudrate);
         xbow->sendCommand('R');
         xbow->sendCommand((u_int8_t)measurementMode);
         xbow->sendCommand((u_int8_t)messageMode);
@@ -286,8 +318,6 @@ public:
     freq_diag_ = std::make_unique<diagnostic_updater::FrequencyStatus>(diagnostic_updater::FrequencyStatusParam(&desired_freq_, &desired_freq_, 0.05));
     freq_diag_->clear();
     diagnostic_.add( *(freq_diag_.get()));
-
-    wallTimer->reset();
   }
 
   /**
@@ -334,10 +364,13 @@ public:
     */
   void interruptionTest(diagnostic_updater::DiagnosticStatusWrapper& status)
   {
-    if (imu_pub->get_subscription_count() == 0 || mag_pub->get_subscription_count() == 0 || imu_no_grab_pub->get_subscription_count() ==0)
-      status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "No operation interrupted.");
+    if (imu_pub->get_subscription_count() > 0 ||
+        mag_pub->get_subscription_count() > 0 ||
+        imu_no_grab_pub->get_subscription_count() > 0 ||
+        (euler_pub != nullptr && euler_pub->get_subscription_count() > 0))
+      status.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "Interruption Text: There were active subscribers.");
     else
-      status.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "There were active subscribers.  Running of self test interrupted operations.");
+      status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "No operation interrupted.");
   }
 
   /**
@@ -347,7 +380,7 @@ public:
   void connectTest(diagnostic_updater::DiagnosticStatusWrapper& status)
   {
     try {
-      xbow->connect(port_name, baudrate);
+      xbow->openPort(port_name.c_str(), baudrate);
       status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Connected successfully.");
     }
     catch(const char* error) {
@@ -399,22 +432,30 @@ public:
       RCLCPP_ERROR(this->get_logger(),"%s",error);
       status.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "Could not start streaming data: "+string(error));
     }
-    for(int i=0;i<it;i++){
-      xbow4x::ImuData data = xbow->readSerialPort();
+    try {
+      for(int i=0;i<it;i++){
 
-      angularRate[X]+=data.rollrate;
-      angularRate[Y]+=data.pitchrate;
-      angularRate[Z]+=data.yawrate;
+        xbow4x::ImuData data = xbow->readSerialPort();
 
-      accel[X]+=data.ax;
-      accel[Y]+=data.ay;
-      accel[Z]+=data.az;
+        angularRate[X]+=data.rollrate;
+        angularRate[Y]+=data.pitchrate;
+        angularRate[Z]+=data.yawrate;
 
-      magnetic[X]+=data.xmag;
-      magnetic[Y]+=data.ymag;
-      magnetic[Z]+=data.zmag;
+        accel[X]+=data.ax;
+        accel[Y]+=data.ay;
+        accel[Z]+=data.az;
 
+        magnetic[X]+=data.xmag;
+        magnetic[Y]+=data.ymag;
+        magnetic[Z]+=data.zmag;
+
+      }
     }
+    catch(const char* error) {
+      RCLCPP_ERROR(this->get_logger(),"%s",error);
+      status.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "Could not start streaming data: "+string(error));
+    }
+    
     angularRate[X]/=it;
     angularRate[Y]/=it;
     angularRate[Z]/=it;
@@ -547,7 +588,7 @@ public:
    */
   void disconnectTest(diagnostic_updater::DiagnosticStatusWrapper& status)
   {
-    xbow->disconnect();
+    xbow->closePort();
 
     status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Disconnected successfully.");
   }
@@ -564,30 +605,48 @@ public:
     status.add("ENU Frame",use_enu_frame);
     status.add("Publis TF",broadcats_tf);
     status.add("Calibrating",!is_initialized);
+    status.add("Temperature",temperature);
   }
 
   /**
      * @brief calibrationStatus Check the status of the imu calibration
      * @param status node status
      */
-    void calibrationStatus(diagnostic_updater::DiagnosticStatusWrapper& status)
-    {
-      if(imu_started && !is_initialized)
-        status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK,"IMU is calibrating");
-      else if(is_initialized) {
-        status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK,"IMU is calibrated");
+  void biasStatus(diagnostic_updater::DiagnosticStatusWrapper& status)
+  {
+    if(imu_started && !is_initialized)
+      status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK,"IMU is capturing bias");
+    else if(is_initialized) {
+      status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK,"IMU bias captured");
 
-        status.add("Gyro Bias X",ang_vel_mean[X]);
-        status.add("Gyro Bias Y", ang_vel_mean[Y]);
-        status.add("Gyro Bias Z", ang_vel_mean[Z]);
+      status.add("Gyro Bias X",ang_vel_mean[X]);
+      status.add("Gyro Bias Y", ang_vel_mean[Y]);
+      status.add("Gyro Bias Z", ang_vel_mean[Z]);
 
-        status.add("Linear Accel Bias X",lin_acc_mean_no_grab[X]);
-        status.add("Linear Accel Bias Y", lin_acc_mean_no_grab[Y]);
-        status.add("Linear Accel Bias Z", lin_acc_mean_no_grab[Z]);
-      }
-      else
-        status.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "IMU not calibrated");
+      status.add("Linear Accel Bias X",lin_acc_mean_no_grab[X]);
+      status.add("Linear Accel Bias Y", lin_acc_mean_no_grab[Y]);
+      status.add("Linear Accel Bias Z", lin_acc_mean_no_grab[Z]);
     }
+    else
+      status.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "IMU imu not captured");
+  }
+
+  /**
+   * @brief calibrationStatus Check the status of the imu calibration
+   * @param status node status
+   */
+  void calibrationStatus(diagnostic_updater::DiagnosticStatusWrapper& status)
+  {
+    if (calibrated)
+    {
+      status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Magnetometer calibrated in the actual execution");
+    }
+    else if(calibrating) {
+      status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Magnetometer is calibrating");
+    }
+    else
+      status.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "Magnetometer not calibrated in the actual execution");
+  }
 
   /*!
    * Returns the status (Measurement Mode and Message Mode) of the IMU. It uses the format Mode:[Mode Name]-[Command] in order to facilitate its parsing.
@@ -602,6 +661,34 @@ public:
     res->response = status();
     return true;
   }
+
+  /**
+   * @brief transformRPY Transforms the euler angles (roll, pitch and yaw) to the ENU frame.
+   * @param roll_in input roll in NED frame
+   * @param pitch_in input pitch in NED frame
+   * @param yaw_in input yaw in NED frame
+   * @param roll_out output roll in ENU frame
+   * @param pitch_out output pitch in ENU frame
+   * @param yaw_out output yaw in ENU frame
+   */
+  void transformRPY(tf2Scalar roll_in,tf2Scalar pitch_in, tf2Scalar yaw_in, tf2Scalar &roll_out,tf2Scalar &pitch_out, tf2Scalar &yaw_out) {
+    tf2::Quaternion q;
+    tf2::Matrix3x3 m;
+
+    q.setRPY(roll_in,pitch_in,yaw_in);
+    q.normalize();
+
+    q=transformQuaternion(q);
+
+    m.setRotation(q);
+    m.getRPY(roll_out,pitch_out,yaw_out);
+
+    roll_out = roll_out;
+    pitch_out = pitch_out;
+    yaw_out = yaw_out;
+  }
+
+
   /*!
      * Broadcasts the IMU data in Angle Mode in the topics data_raw and data_no_grab. If broadcast_tf is enabled,
      * it also broadcasts the local reference system to the IMU.
@@ -634,7 +721,9 @@ public:
       RCLCPP_WARN(this->get_logger(),"%s",error);
       diagnostic_.broadcast(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "Could not start streaming data: "+string(error));
     }
+    temperature = data.boardtemp;
 
+    data.receive_time = clock.now();
     angularRate[X] = data.rollrate;
     angularRate[Y] = data.pitchrate;
     angularRate[Z] = data.yawrate;
@@ -659,6 +748,8 @@ public:
       if(measurementMode==xbow4x::MeasurementType::AngleMode) {
         g_w[Z] = 9.81;
         q=transformQuaternion(q);
+        if(euler)
+          transformRPY(data.roll,data.pitch,data.yaw,data.roll,data.pitch,data.yaw);
       }
     }
 
@@ -675,36 +766,48 @@ public:
     }
 
     if(is_initialized) {
-      msg.header.stamp = data.receive_time;
-      msg.header.frame_id = frame_id;
-      msg.angular_velocity.x = angularRate[X] - ang_vel_mean[X];
-      msg.angular_velocity.y = angularRate[Y] - ang_vel_mean[Y];
-      msg.angular_velocity.z = angularRate[Z] - ang_vel_mean[Z];
-      msg.linear_acceleration.x = accel[X];
-      msg.linear_acceleration.y = accel[Y];
-      msg.linear_acceleration.z = accel[Z];
-      msg.orientation = tf2::toMsg(q);
+      imu_msg.header.stamp = data.receive_time;
+      imu_msg.header.frame_id = frame_id;
+      imu_msg.angular_velocity.x = angularRate[X] - ang_vel_mean[X];
+      imu_msg.angular_velocity.y = angularRate[Y] - ang_vel_mean[Y];
+      imu_msg.angular_velocity.z = angularRate[Z] - ang_vel_mean[Z];
+      imu_msg.linear_acceleration.x = accel[X];
+      imu_msg.linear_acceleration.y = accel[Y];
+      imu_msg.linear_acceleration.z = accel[Z];
+      imu_msg.orientation = tf2::toMsg(q);
       msgmag.header.stamp = data.receive_time;
       msgmag.header.frame_id = frame_id;
       msgmag.magnetic_field.x = magnetic[X];
       msgmag.magnetic_field.y = magnetic[Y];
       msgmag.magnetic_field.z = magnetic[Z];
 
-      imu_pub->publish(msg);
+      imu_pub->publish(imu_msg);
       mag_pub->publish(msgmag);
 
       if(measurementMode==xbow4x::MeasurementType::AngleMode) {
-        msg_no_grab.header.stamp = data.receive_time;
-        msg_no_grab.header.frame_id = frame_id;
-        msg_no_grab.angular_velocity.x = angularRate[X] - ang_vel_mean[X];
-        msg_no_grab.angular_velocity.y = angularRate[Y] - ang_vel_mean[Y];
-        msg_no_grab.angular_velocity.z = angularRate[Z] - ang_vel_mean[Z];
+        imu_msg_no_grab.header.stamp = data.receive_time;
+        imu_msg_no_grab.header.frame_id = frame_id;
+        imu_msg_no_grab.angular_velocity.x = angularRate[X] - ang_vel_mean[X];
+        imu_msg_no_grab.angular_velocity.y = angularRate[Y] - ang_vel_mean[Y];
+        imu_msg_no_grab.angular_velocity.z = angularRate[Z] - ang_vel_mean[Z];
 
-        msg_no_grab.linear_acceleration.x = a_b[X] - lin_acc_mean_no_grab[X];
-        msg_no_grab.linear_acceleration.y = a_b[Y] - lin_acc_mean_no_grab[Y];
-        msg_no_grab.linear_acceleration.z = a_b[Z] - lin_acc_mean_no_grab[Z];
-        msg_no_grab.orientation = tf2::toMsg(q);
-        imu_no_grab_pub->publish(msg_no_grab);
+        imu_msg_no_grab.linear_acceleration.x = a_b[X] - lin_acc_mean_no_grab[X];
+        imu_msg_no_grab.linear_acceleration.y = a_b[Y] - lin_acc_mean_no_grab[Y];
+        imu_msg_no_grab.linear_acceleration.z = a_b[Z] - lin_acc_mean_no_grab[Z];
+
+        imu_msg_no_grab.orientation = tf2::toMsg(q);
+        imu_no_grab_pub->publish(imu_msg_no_grab);
+
+        if(euler && measurementMode == xbow4x::MeasurementType::AngleMode) {
+          eulerMsg.roll=data.roll*180/M_PI;
+          eulerMsg.pitch=data.pitch*180/M_PI;
+          eulerMsg.yaw=data.yaw*180/M_PI;
+          eulerMsg.header.frame_id = frame_id;
+          eulerMsg.header.stamp = data.receive_time;
+
+          euler_pub->publish(eulerMsg);
+        }
+
 
         //          RCLCPP_INFO(this->get_logger(),"%lf %lf %lf",data.ax,data.ay,data.az);
         if(broadcats_tf) {
@@ -813,6 +916,131 @@ public:
 
   }
 
+  /**
+   * @brief start_calibrate Service to start the magnetometer calibration
+   * @param req Request object
+   * @param resp Response object
+   * @return True if the service is running correctly or false if not
+   */
+  bool start_calibrate(const std::shared_ptr<std_srvs::srv::Empty::Request> &req, const std::shared_ptr<std_srvs::srv::Empty::Response> &resp) {
+
+    if(is_initialized) {
+      try {
+        calibrated=false;
+        wallTimer->cancel();
+        RCLCPP_INFO(this->get_logger(),"Clearing hard iron offset");
+        xbow->calibrateCommand('h');
+        RCLCPP_INFO(this->get_logger(),"Clearing soft iron offset");
+        xbow->calibrateCommand('t');
+        RCLCPP_INFO(this->get_logger(),"Starting magnetometer calibration");
+        xbow->calibrateCommand('s');
+        calibrating=true;
+      }
+      catch (const char* error) {
+        error_count_++;
+        RCLCPP_ERROR(this->get_logger(),"Exception thrown while calibrating IMU %s", error);
+        diagnostic_.broadcast(diagnostic_msgs::msg::DiagnosticStatus::WARN,"Exception thrown while calibrating IMU" + string(error));
+        return false;
+      }
+    }
+    else {
+      RCLCPP_INFO(this->get_logger(),"IMU Calculating bias");
+    }
+    return true;
+  }
+
+  /**
+   * @brief stop_calibrate Service to stop the magnetometer calibration
+   * @param req Request object
+   * @param resp Response object
+   * @return True if the service is running correctly or false if not
+   */
+  bool stop_calibrate(const std::shared_ptr<std_srvs::srv::Empty::Request> &req, const std::shared_ptr<std_srvs::srv::Empty::Response> &resp) {
+
+    if(is_initialized) {
+      try {
+        RCLCPP_INFO(this->get_logger(),"Stoping magnetometer calibration");
+        xbow->calibrateCommand('u');
+        xbow->sendCommand((u_int8_t)measurementMode);
+        if(messageMode == xbow4x::MessageMode::Continous) {
+          xbow->sendCommand((u_int8_t)xbow4x::MessageMode::Continous);
+          wallTimer->reset();
+        }
+        calibrated=true;
+        calibrating=false;
+      }
+      catch (const char* error) {
+        error_count_++;
+        RCLCPP_ERROR(this->get_logger(),"Exception thrown while calibrating IMU %s", error);
+        diagnostic_.broadcast(diagnostic_msgs::msg::DiagnosticStatus::WARN,"Exception thrown while calibrating IMU" + string(error));
+        return false;
+      }
+    }
+    else {
+      RCLCPP_INFO(this->get_logger(),"IMU Calculating bias");
+    }
+    return true;
+  }
+
+  /**
+   * @brief Poll Service to poll data to the IMU
+   * @param req Request object
+   * @param resp Response object
+   * @return True if the service is running correctly or false if not
+   */
+  bool poll(const std::shared_ptr<std_srvs::srv::Empty::Request> &req, const std::shared_ptr<std_srvs::srv::Empty::Response> &resp)
+  {
+    try {
+      if(xbow->getReadingStatus())
+        xbow->stopContinousReading();
+      xbow->sendCommand('G');
+    }
+    catch(const char* error) {
+      error_count_++;
+      RCLCPP_ERROR(this->get_logger(),"Problem stoping continous mode %s", error);
+      diagnostic_.broadcast(diagnostic_msgs::msg::DiagnosticStatus::WARN,"Problem stoping continous mode " + string(error));
+    }
+
+    if(wallTimer->is_ready())
+      wallTimer->cancel();
+
+    messageMode = xbow4x::MessageMode::Poll;
+    this->set_parameter(rclcpp::Parameter("message_mode", u_int8_t(xbow4x::MessageMode::Poll)));
+
+    wallTimerCallback();
+
+    return true;
+  }
+
+  /**
+   * @brief Continuous Service change the node to continuous mode
+   * @param req Request object
+   * @param resp Response object
+   * @return True if the service is running correctly or false if not
+   */
+  bool continuous(const std::shared_ptr<std_srvs::srv::Empty::Request> &req, const std::shared_ptr<std_srvs::srv::Empty::Response> &resp)
+  {
+    if(wallTimer->is_ready())
+      return true;
+    else
+      wallTimer->reset();
+
+    try {
+      xbow->sendCommand('C');
+      xbow->startContinuousReading();
+    }
+    catch(const char* error) {
+      error_count_++;
+      RCLCPP_ERROR(this->get_logger(),"Problem starting continous mode %s", error);
+      diagnostic_.broadcast(diagnostic_msgs::msg::DiagnosticStatus::WARN,"Problem starting continous mode " + string(error));
+    }
+
+    messageMode = xbow4x::MessageMode::Continous;
+    this->set_parameter(rclcpp::Parameter("message_mode", u_int8_t(xbow4x::MessageMode::Continous)));
+
+    return true;
+  }
+
   /*!
    * Service broadcast_tf [true/false]: Enables or disables broadcasting of the IMU reference system.
    *
@@ -824,33 +1052,38 @@ public:
   bool broadcatsTf_srv(const std::shared_ptr<xbow400_interfaces::srv::BroadcastTf::Request> req, const std::shared_ptr<xbow400_interfaces::srv::BroadcastTf::Response> res) {
     broadcats_tf = req->active;
     req->active ? res->response="TF Active" : res->response="TF Inactive";
+    
+    this->set_parameter(rclcpp::Parameter("broadcast_tf", broadcats_tf));
     return true;
   }
 
 
-  /*!
-   * Sets a new baudrate in the serial port RS232 communication with the IMU. Be carreful with this service, it is possible to lost
-   * the communication with the IMU. To reset the baudrate to 38400 disconnect the IMU from the power and from de USB.
-   *
-   * \brief setBaudrate Sets a new baudrate in the serial port RS232 communication with the IMU.
-   * \param xbow Reference to the xbow reader
-   * \param req Server Request object
-   * \param res Serever Response object
-   * \return True if the server is running correctly or false if not
-   */
-  bool setBaudrate_srv(const std::shared_ptr<xbow400_interfaces::srv::SetBaudrate::Request> req, const std::shared_ptr<xbow400_interfaces::srv::SetBaudrate::Response> res) {
-    try {
-      res->response = xbow->setBaudrate(req->baudrate);
-    }
-    catch(const char* error) {
-      error_count_++;
-      diagnostic_.broadcast(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "IMU ERROR: "+string(error));
-      RCLCPP_ERROR(this->get_logger(),"%s",error);
-      throw std::runtime_error(error);
-      return false;
-    }
-    return true;
-  }
+//IMU NOT REPLY
+//  /*!
+//   * Sets a new baudrate in the serial port RS232 communication with the IMU. Be carreful with this service, it is possible to lost
+//   * the communication with the IMU. To reset the baudrate to 38400 disconnect the IMU from the power and from de USB.
+//   *
+//   * \brief setBaudrate Sets a new baudrate in the serial port RS232 communication with the IMU.
+//   * \param xbow Reference to the xbow reader
+//   * \param req Server Request object
+//   * \param res Serever Response object
+//   * \return True if the server is running correctly or false if not
+//   */
+//  bool setBaudrate_srv(const std::shared_ptr<xbow400_interfaces::srv::SetBaudrate::Request> req, const std::shared_ptr<xbow400_interfaces::srv::SetBaudrate::Response> res) {
+//    try {
+//      wallTimer->cancel();
+//      res->response = xbow->setBaudrate(req->baudrate);
+//    }
+//    catch(const char* error) {
+//      error_count_++;
+//      diagnostic_.broadcast(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "IMU ERROR: "+string(error));
+//      RCLCPP_ERROR(this->get_logger(),"%s",error);
+//      return false;
+//    }
+//    wallTimer->reset();
+//    this->set_parameter(rclcpp::Parameter("baudrate", req->baudrate));
+//    return true;
+//  }
 
   /*!
    *
@@ -858,8 +1091,8 @@ public:
    *
    *  - s: starts calibration mode. Stops the other modes (continuous or polling). While the calibration is active the other modes do not work, it is necessary to stop the calibration.
    *  - u: stops calibration mode. The message mode active after it is polling mode.
-   *  - h: clear hard iron calibration data
-   *  - t: clear soft iron calibration data
+   *  - h: clear hard iron calibration data. The message mode active after it is polling mode.
+   *  - t: clear soft iron calibration data. The message mode active after it is polling mode.
    *
    * \brief calibrateSrv Send commands to the IMU to different actions related with the calibration.
    * \param xbow Reference to the xbow reader
@@ -875,11 +1108,18 @@ public:
         res->response="Incorrect command";
       else {
         try {
-          if(req->command=="s" && wallTimer->is_ready())
+          if((req->command=="s" || req->command=="t" || req->command=="h") && wallTimer->is_ready()) {
             wallTimer->cancel();
+            calibrating=true;
+            calibrated=false;
+          }
 
           res->response = xbow->calibrateCommand(req->command.c_str()[0]);
           RCLCPP_INFO(this->get_logger(),"Calibrate Service: %s", res->response.c_str());
+          if(req->command=="u") {
+            calibrated=true;
+            calibrating=false;
+          }
         }
         catch(const char* error) {
           error_count_++;
@@ -927,9 +1167,19 @@ public:
 
           if(req->command == string(1,(char)xbow4x::MeasurementType::AngleMode) || req->command == string(1,(char)xbow4x::MeasurementType::ScaledMode) || req->command == string(1,(char)xbow4x::MeasurementType::VoltageMode)) {
             measurementMode = static_cast<xbow4x::MeasurementType>(req->command.c_str()[0]);
+            this->set_parameter(rclcpp::Parameter("measurement_mode", req->command.c_str()[0]));
             setWorkFrecuency();
             is_initialized = false;
             imu_started = false;
+            if(measurementMode == xbow4x::MeasurementType::AngleMode && !euler_pub) {
+              euler_pub = this->create_publisher<xbow400_interfaces::msg::EulerStamped>("euler", 1);
+              imu_no_grab_pub = this->create_publisher<sensor_msgs::msg::Imu>("imu/data_no_grab", 1);
+            }
+            else if(measurementMode != xbow4x::MeasurementType::AngleMode && euler_pub) {
+              euler_pub.reset();
+              imu_no_grab_pub.reset();
+            }
+
             if(messageMode != xbow4x::MessageMode::Continous) {
               xbow->sendCommand((u_int8_t)xbow4x::MessageMode::Continous);
               wallTimer->reset();
@@ -937,16 +1187,15 @@ public:
           }
           else if(req->command == string(1,(char)xbow4x::MessageMode::Continous)) {
             messageMode = xbow4x::MessageMode::Continous;
+            this->set_parameter(rclcpp::Parameter("message_mode", u_int8_t(xbow4x::MessageMode::Continous)));
             wallTimer->reset();
           }
-          else if( req->command == string(1,(char)xbow4x::MessageMode::Poll)|| req->command == "G") {
+          else if(req->command == "R" || req->command == string(1,(char)xbow4x::MessageMode::Poll)|| req->command == "G") {
             messageMode = xbow4x::MessageMode::Poll;
+            this->set_parameter(rclcpp::Parameter("message_mode", u_int8_t(xbow4x::MessageMode::Poll)));
             wallTimer->cancel();
-            wallTimerCallback();
-          }
-          else if(req->command == "R") {
-            messageMode = xbow4x::MessageMode::Poll;
-            wallTimer->cancel();
+            if(req->command == "G")
+              wallTimerCallback();
           }
         }
         catch(const char* error) {

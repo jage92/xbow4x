@@ -40,20 +40,31 @@
 #ifndef XBOW4X_H
 #define XBOW4X_H
 
-
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <string>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
 #include <queue>
 #include <string.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <termios.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <poll.h>
+
 using namespace std;
 
 // Serial Header
-#include "serial/serial.h"
+//#include "serial/serial.h"
 
 // ROS Header
 #include <rclcpp/rclcpp.hpp>
+
+#define MAX_BYTES_SKIPPED  100
 
 namespace xbow4x{
 
@@ -106,12 +117,14 @@ public:
      * @throws ConnectionFailedException connection attempt failed.
      * @throws UnknownErrorCodeException unknown error code returned.
      */
-    void connect(std::string port, int baudrate=115200, long timeout=50);
+    //void connect(std::string port, int baudrate=38400, long timeout=50);
+    void openPort(const char *port_name, int baudrate);
 
    /*!
     * Disconnects from the serial port
     */
-    void disconnect();
+    //void disconnect();
+    void closePort();
 
     /*!
      * Send a command to the IMU
@@ -120,7 +133,7 @@ public:
      * \param command string of a one character that contains the command to be send
      * \param returnMessage message returned to show to the user
      */
-    string sendCommand(u_int8_t command);
+    string sendCommand(uint8_t command);
 
     /*!
      * Send a command to the IMU to calibrate the magnetometer
@@ -129,17 +142,17 @@ public:
      * \param command string of a one character that contains the command to be send
      * \param returnMessage message returned to show to the user
      */
-    string calibrateCommand(u_int8_t command);
+    string calibrateCommand(uint8_t command);
 
-
-    /*!
-     * Send a command to the IMU to calibrate the magnetometer
-     * Commands in the Crossbow documentation
-     *
-     * \param command string of a one character that contains the command to be send
-     * \param returnMessage message returned to show to the user
-     */
-    string setBaudrate(u_int32_t baudrate);
+//DO NOT WORK, IMU DOES NOT REPLY
+//    /*!
+//     * Send a command to the IMU to calibrate the magnetometer
+//     * Commands in the Crossbow documentation
+//     *
+//     * \param command string of a one character that contains the command to be send
+//     * \param returnMessage message returned to show to the user
+//     */
+//    string setBaudrate(u_int32_t baudrate);
     MeasurementType getMeasurementType() const;
 
     MessageMode getMessageMode() const;
@@ -149,9 +162,10 @@ public:
      */
     ImuData readSerialPort();
 
-private:
 
-   /*!
+    bool getReadingStatus();
+
+    /*!
     * Starts a thread to continuously read from the serial port.
     *
     * Starts a thread that runs 'ReadSerialPort' which constantly reads
@@ -160,7 +174,7 @@ private:
     *
     * @see XBOW4X::DataCallback, XBOW4X::XBOW4X::ReadSerialPort, XBOW4X::XBOW4X::StopReading
     */
-    bool startContinuousReading();
+    void startContinuousReading();
 
    /*!
     * Starts the thread that reads from the serial port
@@ -169,6 +183,7 @@ private:
     */
     void stopContinousReading();
 
+private:
    /*!
     * Parses a packet of data from the IMU in angle measurement type.  Scale factors are
     * also applied to the data to convert into engineering units.
@@ -193,8 +208,28 @@ private:
       */
      void reopenSerialPort();
 
+     /**
+      * @brief send sends data to the IMU throw serial port
+      * @param cmd data to send
+      * @param cmd_len length of the data to send
+      * @return length of the sent data
+      */
+     int send(uint8_t *cmd, int cmd_len);
+
+     //!
+     /**
+      * @brief read_data Read data from the IMU throw serial port
+      * @param buff data read
+      * @param count length of the data read
+      * @param timeout time maximun to wait for the data (default 1000 ms)
+      * @return lenght of the data read
+      */
+     int read_with_timeout(uint8_t *buff, size_t count, int timeout);
+     int read_data(uint8_t *rep, uint8_t first_byte, int rep_len, int timeout=1000);
+
+
     //! Serial port object for communicating with sensor
-    serial::Serial *serial_port_;
+//    serial::Serial *serial_port_;
     //! most recently parsed IMU data
     ImuData imu_data_;
 
@@ -208,12 +243,15 @@ private:
     bool reading_status_;  //!< True if the read thread is running, false otherwise.
     MeasurementType measurementType; //!< Measurements type
     MessageMode messageMode;
-    string port; //! Serial port file in use
+    char port[100]; //! Serial port file in use
     int baudrate; //! Serial port daudrate in use
     long timeout; //! Serial port timeout un use
     bool calibrationModeEnabled; //! Indicates if calibration mode is started
     rclcpp::Logger logger_;
-    rclcpp::Clock clock;
+    //rclcpp::Clock clock;
+
+    //! The file descriptor
+    int fd;
 
 };
 
