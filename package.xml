@@ -1,14 +1,15 @@
 <?xml version="1.0"?>
 <package>
   <name>xbow4x</name>
-  <version>2.0.0</version>
+  <version>3.0.0</version>
   <description>
     The xbow4x package
 
     The read sensor measures are published on a different topic:
-      - /microstrain_3dmgx2_imu/imu/data: publishes the scaled sensor measures of the acceleration, angular velocity, and orientation.
-      - /microstrain_3dmgx2_imu/mag: publishes the scaled sensor measures of the magnetic field
-      - /microstrain_3dmgx2_imu/imu/data_no_grab: publishes the scaled sensor measures of the acceleration without gravity component, angular velocity, and orientation.
+    - /imu/data: publishes the scaled sensor measures of the acceleration, angular velocity, and orientation.
+    - /mag: publishes the scaled sensor measures of the magnetic field
+    - /imu/data_no_grab: publishes the scaled sensor measures of the acceleration without gravity component, angular velocity, and orientation.
+    - /euler: publishes the euler angles (roll, pitch and yaw) in degrees. Only available in angle mode.
 
        Althought the IMU can be in different measurement type, the topics are the same and publish the same data, only chage how the sensor obtain that data. When the orientation
        is not available, the identity quaternion is published.
@@ -33,9 +34,10 @@
             - u: stops calibration mode. The message mode active after it is polling mode.
             - h: clear hard iron calibration data
             - t: clear soft iron calibration data
-    - set_baudrate: allows to use the automatic IMU baud rate setting functionality.
-        Usage: set_baudrate [baudrate]
-    Note: does not work as well as it should because the IMU make a response but the baudrate not change.
+    - poll: activate poll mode and polls the imu.
+    - continuous: activate continous mode.
+    - start_calibrate: starts calibration mode (send the commands of calibrateCommnad service).
+    - stop_calibrate: stops calibration mode and return the IMU to the prevoius state.
     - status: returns IMU status, measurement and communication modes enabled.
         Usage: status
     - broadcast_ft: allows to enable and disable the broadcasting of the IMU reference
@@ -56,6 +58,7 @@
         - message_mode: Allows the IMU to publish the data continuously or pooling. To pool data see the services.
             - P: Polling mode. If continuous mode is active, stops it and activates polling mode. The G command is used to poll packets.
             - C: Continuous mode. Returns data packets at a frequency of 60 Hz.
+        - euler: Creates the /euler topic to publis euler angles in degrees. Only available in angle mode.
 
     The file imu_params.yaml contains different interesting matrices. The covariance matrices are calculated by obtaining data with the IMU immobile.
       - tf_translation: translation vector of the IMU reference frame with respect to the ENU frame called world
@@ -80,13 +83,15 @@
 
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>roscpp</build_depend>
+  <build_depend>std_msgs</build_depend>
   <build_depend>sensor_msgs</build_depend>
   <build_depend>self_test</build_depend>
   <build_depend>diagnostic_updater</build_depend>
-  <build_depend>serial</build_depend>
+  <build_depend>diagnostic_msgs</build_depend>
   <build_depend>tf2</build_depend>
   <build_depend>message_generation</build_depend>
   <run_depend>roscpp</run_depend>
+  <run_depend>std_msgs</run_depend>
   <run_depend>sensor_msgs</run_depend>
   <run_depend>self_test</run_depend>
   <run_depend>diagnostic_updater</run_depend>

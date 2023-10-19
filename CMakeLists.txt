@@ -7,12 +7,19 @@ project(xbow4x)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   sensor_msgs
-  serial
+  std_msgs
+  std_srvs
   tf2
   tf2_ros
   message_generation
   self_test
   diagnostic_updater
+)
+
+## Generate messages in the 'msg' folder
+add_message_files(
+   FILES
+   EulerStamped.msg
 )
 
 add_service_files(
@@ -30,7 +37,7 @@ generate_messages(
 )
 
 ## System dependencies are found with CMake's conventions
-find_package(Boost REQUIRED COMPONENTS thread system)
+#find_package(Boost REQUIRED COMPONENTS thread system)
 
 ###################################
 ## catkin specific configuration ##
@@ -44,7 +51,14 @@ find_package(Boost REQUIRED COMPONENTS thread system)
 catkin_package(
  INCLUDE_DIRS include
  LIBRARIES xbow4x
- CATKIN_DEPENDS message_runtime roscpp sensor_msgs serial tf2 self_test diagnostic_updater
+ CATKIN_DEPENDS
+    message_runtime
+    roscpp
+    std_msgs
+    sensor_msgs
+    tf2
+    self_test
+    diagnostic_updater
  # DEPENDS system_lib
 )
 
@@ -61,30 +75,24 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/include
 )
 
-file(GLOB_RECURSE HEADERS */*.hpp */*.h)
+#file(GLOB_RECURSE HEADERS */*.hpp */*.h)
 
 ## Declare a C++ library
 add_library(xbow4x
   src/xbow4x.cpp
 )
 
-
-
-
 ## Declare a C++ executable
-add_executable(xbow4x_node ${HEADERS} src/xbow4x_node.cpp)
+add_executable(xbow4x_node src/xbow4x_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(xbow440_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(xbow4x_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(xbow4x_node
   xbow4x
-  ${catkin_LIBRARIES}
-  ${Boost_SYSTEM_LIBRARY}
-  ${Boost_THREAD_LIBRARY}
-)
+  ${catkin_LIBRARIES})
 
 file(GLOB_RECURSE EXTRA_FILES */*)
 add_custom_target(${PROJECT_NAME}_OTHER_FILES ALL WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} SOURCES ${EXTRA_FILES})

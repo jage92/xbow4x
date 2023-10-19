@@ -1,17 +1,16 @@
 #include "xbow4x/xbow4x.h"
-using namespace xbow4x;
 
-#define WIN32_LEAN_AND_MEAN 
+#define WIN32_LEAN_AND_MEAN
 #define _USE_MATH_DEFINES
 
 #define AHRS_ANGLE_MODE_PACKET_SIZE 30
 #define AHRS_SCALED_MODE_PACKET_SIZE 24
 #define AHRS_VOLTAGE_MODE_PACKET_SIZE 24
 
+using namespace xbow4x;
 
-XBOW4X::XBOW4X()
-{	
-  serial_port_ = NULL;
+XBOW4X::XBOW4X(): fd(-1)
+{
   read_size_ = AHRS_ANGLE_MODE_PACKET_SIZE;
   reading_status_ = false;
   measurementType = MeasurementType::None;
@@ -19,51 +18,180 @@ XBOW4X::XBOW4X()
   calibrationModeEnabled = false;
 }
 
-void XBOW4X::connect(std::string port, int baudrate, long timeout) {
-  serial_port_ = new serial::Serial(port, baudrate, serial::Timeout::simpleTimeout(timeout));
-  u_int8_t buffer[100];
+////////////////////////////////////////////////////////////////////////////////
+// Open the IMU port
+void XBOW4X::openPort(const char *port_name, int baudrate)
+{
+  closePort(); // In case it was previously open, try to close it first.
 
-  this->port=port;
-  this->baudrate=baudrate;
-  this->timeout=timeout;
+  // Open the port
+  fd = open(port_name, O_RDWR | O_SYNC | O_NONBLOCK | O_NOCTTY, S_IRUSR | S_IWUSR );
+  if (fd < 0)
+  {
+    const char *extra_msg = "";
+    switch (errno)
+    {
+    case EACCES:
+      extra_msg = "You probably don't have premission to open the port for reading and writing.";
+      break;
+    case ENOENT:
+      extra_msg = "The requested port does not exist. Is the IMU connected? Was the port name misspelled?";
+      break;
+    }
 
-  if (!serial_port_->isOpen()){
-    ROS_DEBUG("Serial port: %s failed to open.", port.c_str());
-    delete serial_port_;
-    serial_port_ = NULL;
-    throw "Serial port: %s failed to open" + port;
+    throw "Unable to open serial port ["+ string(port_name) + "]. "+strerror(errno)+". "+extra_msg;
+  }
+
+  // Lock the port
+  struct flock fl;
+  fl.l_type   = F_WRLCK;
+  fl.l_whence = SEEK_SET;
+  fl.l_start = 0;
+  fl.l_len   = 0;
+  fl.l_pid   = getpid();
+
+  if (fcntl(fd, F_SETLK, &fl) != 0)
+    throw "Device "+string(port_name)+" is already locked. Try 'lsof | grep "+string(port_name)+"' to find other processes that currently have the port open.";
+
+  // Change port settings
+  struct termios term;
+  if (tcgetattr(fd, &term) < 0)
+    throw "Unable to get serial port attributes. The port you specified ("+string(port_name)+") may not be a serial port.";
+
+  cfmakeraw( &term );
+  if(baudrate == 38400) {
+    cfsetispeed(&term, B38400);
+    cfsetospeed(&term, B38400);
+  }
+  else if(baudrate == 115200) {
+    cfsetispeed(&term, B115200);
+    cfsetospeed(&term, B115200);
+  }
+  else if(baudrate == 9600) {
+    cfsetispeed(&term, B9600);
+    cfsetospeed(&term, B9600);
   }
   else {
-    ROS_INFO("Serial port: %s opened successfully.", port.c_str());
-    ROS_INFO("Searching for IMU...");
-
-    //Cleanning the buffer
-    serial_port_->read(buffer,99);
+    throw "Incorrect baudrate";
   }
+
+  if (tcsetattr(fd, TCSAFLUSH, &term) < 0 )
+    throw "Unable to set serial port attributes. The port you specified ("+string(port_name)+") may not be a serial port.";
+
+  // Stop continuous mode
+  stopContinousReading();
+
+  // Make sure queues are empty before we begin
+  if (tcflush(fd, TCIOFLUSH) != 0)
+    throw "Tcflush failed. Please report this error if you see it.";
 }
 
-void XBOW4X::disconnect() {
-  ROS_INFO("Disconnecting DMU.");
-  stopContinousReading();
-  serial_port_->close();
-  delete serial_port_;
-  serial_port_ = NULL;
+////////////////////////////////////////////////////////////////////////////////
+// Close the IMU port
+void XBOW4X::closePort()
+{
+  if (fd != -1)
+  {
+    if (reading_status_)
+        stopContinousReading();
+    if (close(fd) != 0)
+      throw "Unable to close serial port; ["+std::string(strerror(errno))+"]";
+    fd = -1;
+  }
   measurementType = MeasurementType::None;
 }
 
-string XBOW4X::calibrateCommand(u_int8_t command) {
-  u_int8_t buffer[100];
-  int size;
+////////////////////////////////////////////////////////////////////////////////
+// Send a packet to the IMU.
+// Returns the number of bytes written.
+int XBOW4X::send(uint8_t *cmd, int cmd_len)
+{
+  int bytes;
+
+  bytes = write(fd, cmd, cmd_len);
+
+
+  if (bytes < 0)
+    throw "error writing to IMU ["+string(strerror(errno))+"]";
+
+  if (bytes != cmd_len)
+    throw "whole message not written to IMU";
+
+  // Make sure the queue is drained
+  // Synchronous IO doesnt always work
+  if (tcdrain(fd) != 0)
+    throw "tcdrain failed";
+
+  return bytes;
+}
+
+int XBOW4X::read_data(uint8_t *rep, uint8_t first_byte, int rep_len, int timeout)
+{
+  int nbytes, bytes, skippedbytes;
+  skippedbytes = 0;
+
+  memset(rep,0,rep_len);
+
+  while (*rep != first_byte && skippedbytes < MAX_BYTES_SKIPPED)
+  {
+    read_with_timeout(rep, 1, timeout);
+
+    skippedbytes++;
+    bytes = 1;
+  }
+
+  // Read the rest of the message:
+  while (bytes < rep_len)
+  {
+    nbytes = read_with_timeout(rep + bytes, rep_len - bytes, timeout);
+
+    if (nbytes < 0)
+      throw "read failed  ["+string(strerror(errno))+"]";
+
+    bytes += nbytes;
+  }
+  return bytes;
+}
+
+
+int XBOW4X::read_with_timeout(uint8_t *buff, size_t count, int timeout)
+{
+  ssize_t nbytes;
+  int retval;
+
+  struct pollfd ufd[1];
+  ufd[0].fd = fd;
+  ufd[0].events = POLLIN;
+  //  timeout=0;
+  if (timeout == 0)
+    timeout = -1; // For compatibility with former behavior, 0 means no timeout. For poll, negative means no timeout.
+
+  if ( (retval = poll(ufd, 1, timeout)) < 0 )
+    throw "poll failed  ["+string(strerror(errno))+"]";
+
+  if (retval == 0)
+    throw "timeout reached";
+
+  nbytes = read(fd, buff, count);
+
+  if (nbytes < 0)
+    throw "read failed  ["+string(strerror(errno))+"]";
+
+  return nbytes;
+}
+
+
+string XBOW4X::calibrateCommand(uint8_t command) {
+  uint8_t buffer[100];
   string s;
 
   switch (command) {
   case 's':
     if(!calibrationModeEnabled) {
       sendCommand('R');
-      ROS_DEBUG("Command %c",command);
-      serial_port_->write(&command,1);
-      size = serial_port_->read(buffer,1);
-      ROS_DEBUG("Response %d",buffer[0]);
+      send(&command,1);
+      read_data(buffer,'S',1);
+
       if(buffer[0]=='S') {
         calibrationModeEnabled=true;
         return "Calibration Mode started";
@@ -71,13 +199,14 @@ string XBOW4X::calibrateCommand(u_int8_t command) {
       throw "Impossible to communicate with the IMU";
     }
     else
-      throw "The calibrating is already enabled";
+      throw"The calibrating is already enabled";
+
   case 'u':
     if(calibrationModeEnabled) {
-      serial_port_->write(&command,1);
-      ROS_DEBUG("Command %c",command);
-      size = serial_port_->read(buffer,1);
-      ROS_DEBUG("Response %d",buffer[0]);
+      send(&command,1);
+
+      read_data(buffer,'U',1);
+
       if(buffer[0]=='U') {
         calibrationModeEnabled=false;
         return "Calibration Mode stopped";
@@ -90,12 +219,12 @@ string XBOW4X::calibrateCommand(u_int8_t command) {
   case 'h':
     if(!calibrationModeEnabled) {
       sendCommand('R');
-      serial_port_->write(&command,1);
-      ROS_DEBUG("Command %c",command);
-      size = serial_port_->read(buffer,1);
-      ROS_DEBUG("Response %d",buffer[0]);
-      if(buffer[0]=='H')
+      send(&command,1);
+      read_data(buffer,'H',1);
+
+      if(buffer[0]=='H') {
         return "Hard iron calibration cleared";
+      }
       throw "Impossible to communicate with the IMU";
     }
     else
@@ -104,28 +233,22 @@ string XBOW4X::calibrateCommand(u_int8_t command) {
   case 't':
     if(!calibrationModeEnabled) {
       sendCommand('R');
-      serial_port_->write(&command,1);
-      ROS_DEBUG("Command %c",command);
-      size = serial_port_->read(buffer,1);
-      ROS_DEBUG("Response %d",buffer[0]);
+      send(&command,1);
+
+      read_data(buffer,'T',1);
+      //tcflush(fd, TCIFLUSH);
+
       if(buffer[0]=='T')
         return "Soft iron calibration cleared";
       throw "Impossible to communicate with the IMU";
     }
     else
-      throw "The calibrating is enabled";
+      throw"The calibrating is enabled";
 
   default:
     throw "Incorrect command";
+    break;
   }
-}
-
-void XBOW4X::reopenSerialPort() {
-  u_int8_t buffer[100];
-  serial_port_->close();
-  delete serial_port_;
-  serial_port_ = new serial::Serial(port, baudrate, serial::Timeout::simpleTimeout(timeout));
-  serial_port_->read(buffer,99);
 }
 
 MessageMode XBOW4X::getMessageMode() const
@@ -138,51 +261,9 @@ MeasurementType XBOW4X::getMeasurementType() const
   return measurementType;
 }
 
-string XBOW4X::setBaudrate(u_int32_t baudrate) {
-
-  string s;
-  u_int8_t command;
-  u_int8_t buffer[100];
-  int previousBaudrate;
-  sendCommand('R');
-
-  command = 'b';
-  serial_port_->write(&command,1);
-  ROS_DEBUG("Command %c",command);
-  serial_port_->read(buffer,1);
-  ROS_DEBUG("Response %c",buffer[0]);
-
-  if(buffer[0]=='B') {
-    previousBaudrate = this->baudrate;
-    this->baudrate=baudrate;
-    reopenSerialPort();
-
-    command = 'a';
-    serial_port_->write(&command,1);
-    ROS_DEBUG("Command %c",command);
-    serial_port_->read(buffer,1);
-    ROS_DEBUG("Response %c",buffer[0]);
-
-    if(buffer[0]=='A') {
-      sendCommand('R');
-      sendCommand((u_int8_t)measurementType);
-      sendCommand((u_int8_t)messageMode);
-      return "Baudrate changed";
-    }
-    else {
-      this->baudrate=previousBaudrate;
-      reopenSerialPort();
-      throw "It is not possible to set a new baudrate";
-    }
-  }
-  else
-    throw "Impossible to communicate with the IMU";
-}
-
-string XBOW4X::sendCommand(u_int8_t command) {
-  u_int8_t buffer[100];
+string XBOW4X::sendCommand(uint8_t command) {
+  uint8_t buffer[100];
   char temp[25];
-  u_int8_t c;
   int size;
   int num;
   bool flag=false;
@@ -194,37 +275,32 @@ string XBOW4X::sendCommand(u_int8_t command) {
       if(reading_status_) {
         stopContinousReading();
       }
-      ROS_DEBUG("Command %c",command);
-      serial_port_->write(&command,1);
-      size = serial_port_->read(buffer,1);
-      ROS_DEBUG("Response %d",buffer[0]);
-      //measurementType = MeasurementType::None;
+      send(&command,1);
+      read_data(buffer,'H',1);
+
       num=100;
       while(buffer[0]!='H') {
-        //SEARCH PING
-        ROS_DEBUG("Command %c",command);
-        serial_port_->write("G"); //STOP Continuous mode
-        //            messageMode = MessageMode::Poll;
-        reopenSerialPort();
-        ROS_DEBUG("Command %c",command);
+
+        uint8_t buff ='P';
+        send(&buff,1); //STOP Continuous mode
+
         //PING
-        serial_port_->write(&command,1);
-        //sleep(1);
-        size = serial_port_->read(buffer,1);
-        ROS_DEBUG("Response %d",buffer[0]);
+        send(&command,1);
+        read_data(buffer,'H',1);
+
         if(!(--num))
-          throw "It is not possible to communicate with the IMU";
+          throw"It is not possible to communicate with the IMU";
       }
-      return "PING";
+      return"PING";
+
     case 'r': //Voltage Mode
       if(reading_status_) {
         sendCommand('R');
         flag=true;
       }
-      ROS_DEBUG("Command %c",command);
-      serial_port_->write(&command,1);
-      size = serial_port_->read(buffer,1);
-      ROS_DEBUG("Response %c",buffer[0]);
+      send(&command,1);
+      read_data(buffer,'R',1);
+
       if(buffer[0]=='R') {
         measurementType = MeasurementType::VoltageMode;
         read_size_ = AHRS_VOLTAGE_MODE_PACKET_SIZE;
@@ -233,47 +309,45 @@ string XBOW4X::sendCommand(u_int8_t command) {
         return "Voltage Mode enabled";
       }
       else
-        throw "It is not possible to communicate with the IMU";
+        throw"It is not possible to communicate with the IMU";
 
     case 'c': //Scaled Mode
       if(reading_status_) {
         sendCommand('R');
         flag=true;
       }
-      ROS_DEBUG("Command %c",command);
-      serial_port_->write(&command,1);
-      size = serial_port_->read(buffer,1);
-      ROS_DEBUG("Response %c",buffer[0]);
+
+      send(&command,1);
+      read_data(buffer,'C',1);
+
       if(buffer[0]=='C') {
         measurementType = MeasurementType::ScaledMode;
         read_size_ = AHRS_SCALED_MODE_PACKET_SIZE;
-
         if(flag)
           sendCommand('C');
         return "Scaled Mode enabled";
       }
       else
-        throw "It is not possible to communicate with the IMU";
+        throw"It is not possible to communicate with the IMU";
 
     case 'a': //Angle Mode
       if(reading_status_) {
         sendCommand('R');
         flag=true;
       }
-      ROS_DEBUG("Command %c",command);
-      serial_port_->write(&command,1);
-      size = serial_port_->read(buffer,1);
-      ROS_DEBUG("Response %c",buffer[0]);
+
+      send(&command,1);
+      read_data(buffer,'A',1);
+
       if(buffer[0]=='A') {
         measurementType = MeasurementType::AngleMode;
         read_size_ = AHRS_ANGLE_MODE_PACKET_SIZE;
-        ROS_DEBUG("Angle Mode enabled");
+
         if(flag)
           sendCommand('C');
         return "Angle Mode enabled";
       }
       else {
-        ROS_ERROR("It is not possible to communicate with the IMU");
         throw "It is not possible to communicate with the IMU";
       }
     case 'P': //Poll Mode
@@ -281,49 +355,42 @@ string XBOW4X::sendCommand(u_int8_t command) {
         sendCommand('R');
         flag=true;
       }
-      ROS_DEBUG("Command %c",command);
-      serial_port_->write(&command,1);
+      send(&command,1);
+      //tcflush(fd, TCIFLUSH);
       messageMode = MessageMode::Poll;
       return "Poll Mode enabled";
+
     case 'C': //Continuous Mode
-      ROS_DEBUG("Command %c",command);
-      serial_port_->write(&command,1);
+      send(&command,1);
       if(measurementType == MeasurementType::None) {
         throw "No measurement mode selected";
       }
-      if(startContinuousReading()) {
-        ROS_DEBUG("Starting continuous mode");
+      startContinuousReading();
+      if(reading_status_) {
         return "Starting continuous mode";
       }
       else {
-        ROS_DEBUG("Imposible to start continuous mode");
-        return "Imposible to start continuous mode";
+        throw "Imposible to start continuous mode";
       }
     case 'G': //Request Data
       if(reading_status_) {
         sendCommand('R');
       }
-      ROS_DEBUG("Command %c",command);
-      serial_port_->write(&command,1);
-      if(measurementType == MeasurementType::None)
-        return"No measurement mode selected";
-
+      send(&command,1);
+      if(measurementType == MeasurementType::None) {
+        throw "No measurement mode selected";
+      }
       messageMode = MessageMode::Poll;
-      readSerialPort();
+      //readSerialPort();
       return "Packet read";
 
     case 'v': //Query DMU Version
       if(!reading_status_) {
-        ROS_DEBUG("Command %c",command);
-        serial_port_->write(&command,1);
-        ROS_DEBUG("V1");
-        size = serial_port_->read(buffer,26);
-
+        send(&command,1);
+        size = read_data(buffer,0xFF,26);
         strncpy(temp,(char *)&buffer[1],size-1);
-        ROS_INFO("DMU Version: %s",temp);
 
         if(strlen(temp)==24) {
-          ROS_DEBUG("V4");
           return string(temp);
         }
         else
@@ -334,75 +401,68 @@ string XBOW4X::sendCommand(u_int8_t command) {
 
     case 'S': //Query Serial Number
       if(!reading_status_) {
-        serial_port_->write(&command,1);
-        size = serial_port_->read(buffer,6);
+        send(&command,1);
+        size = read_data(buffer,0xFF,6);
+        //tcflush(fd, TCIFLUSH);
         num = int((unsigned char)(buffer[1]) << 24 |
                                                 (unsigned char)(buffer[2]) << 16 |
                                                                               (unsigned char)(buffer[3]) << 8 |
                                                                                                             (unsigned char)(buffer[4]));
-        ROS_DEBUG("Response %d",num);
+
+
         if(size == 6)
           return to_string(num);
         else
           throw "It is not possible to communicate with the IMU";
+
       }
       else
-        return "The IMU is in continous mode, stop it to check the serial number";
+        throw "The IMU is in continous mode, stop it to check the serial number";
+
     default:
       throw "Incorrect command";
     }
   }
-  return "Calibrating mode is active";
+  throw "Calibrating mode is active";
 }
 
 
 
-bool XBOW4X::startContinuousReading() {
+void XBOW4X::startContinuousReading() {
   // create thread to read from sensor
   if(measurementType == MeasurementType::None) {
-    ROS_ERROR("No MEASUREMENT MODE selected");
-    return false;
+    throw "No MEASUREMENT MODE selected";
   }
   messageMode = MessageMode::Continous;
   reading_status_=true;
-
-  return true;
 }
 
 void XBOW4X::stopContinousReading() {
   reading_status_=false;
-  serial_port_->write("G"); //STOP Continuous mode
-  //  messageMode = MessageMode::Poll;
+  //uint8_t buff ='G';
+  uint8_t buff ='P';
+  send(&buff,1); //STOP Continuous mode
 }
 
-ImuData xbow4x::XBOW4X::readSerialPort() {
+ImuData XBOW4X::readSerialPort() {
   unsigned char buffer[read_size_];
-  int len, sum, i;
+  size_t len;
+  int sum;
   string s;
 
-  //  if(!serialPort_enabled) //Because concurrency
-  //    return;
-  len = serial_port_->read(buffer, read_size_);
-  imu_data_.receive_time = ros::Time::now();
+  len = read_data(buffer,0xFF,read_size_);
+  //tcflush(fd, TCIFLUSH);
+  // imu_data_.receive_time = clock.now();
   sum = 0;
-  for(int i = 1; i < (len - 1); i++) {
+  for(int i = 1; i < int((len - 1)); i++) {
     sum += (int)buffer[i];
   }
   sum = sum % 256;
 
   // check if we have a complete read and if checksum is correct
   if ((len != read_size_) || (sum != (int)buffer[(len - 1)])) {
-    // display data
-    ROS_DEBUG("Read data: %d",len);
-    //    for(i = 0; i < len; i++)
-    //        ROS_DEBUG("%d", (int)buffer[i]);
-    //    ROS_DEBUG("");
-    ROS_DEBUG("Computed checksum: %d Data checksum: %d",sum, (int)buffer[(len - 1)]);
-
-    s = sendCommand('R');
-    ROS_DEBUG("%s",s.c_str());
-    s = sendCommand((u_int8_t)messageMode);
-    ROS_DEBUG("%s",s.c_str());
+    sendCommand('R');
+    sendCommand((uint8_t)messageMode);
   }
   else {
     // parse packet
@@ -413,8 +473,8 @@ ImuData xbow4x::XBOW4X::readSerialPort() {
     else if(measurementType == MeasurementType::VoltageMode)
       parseVoltageMode(buffer);
   }
-
   return imu_data_;
+
 }
 
 void XBOW4X::parseAngleMode(unsigned char *packet) { //ANGLE MODE
@@ -499,6 +559,7 @@ void XBOW4X::parseAngleMode(unsigned char *packet) { //ANGLE MODE
 }
 
 
+
 void XBOW4X::parseScaledMode(unsigned char *packet) { //SCALE MODE
   // We're OK and actually have a good packet /w good checksum,
   // decode it, convert the units and update state:
@@ -560,9 +621,6 @@ void XBOW4X::parseScaledMode(unsigned char *packet) { //SCALE MODE
   imu_data_.boardtemp = (imu_data_.boardtemp*5.0/4096.0-1.375)*44.4;
 
   imu_data_.counter = (packet[21] <<8) + packet[22];
-
-
-
 }
 
 
@@ -610,4 +668,8 @@ void XBOW4X::parseVoltageMode(unsigned char *packet) { //VOLTAGE MODE
   imu_data_.boardtemp = (imu_data_.boardtemp*5.0/4096.0-1.375)*44.4;
 
   imu_data_.counter = (packet[21] <<8) + packet[22];
+}
+
+bool XBOW4X::getReadingStatus() {
+  return reading_status_;
 }

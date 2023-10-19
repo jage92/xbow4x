@@ -7,8 +7,6 @@ This interface is heavily based on David Dias interface library for [XBOW6X](htt
 
 The first steps with the model Crossbow AHRS400CC were implemented by Jesus Morales from University of Malaga
 
-Requires the [serial library](https://github.com/wjwwood/serial). Last tested for version 1.2.1.
-
 Tested on ROS Noetic and with Crossbow AHRS400CC.
 
 ## Getting Started
@@ -32,9 +30,10 @@ As a permanent alternative it is possible to set udev rules for your serial adap
 ## ROS Topics
 
 The read sensor measures are published on a different topic:
-- /microstrain_3dmgx2_imu/imu/data: publishes the scaled sensor measures of the acceleration, angular velocity, and orientation.
-- /microstrain_3dmgx2_imu/mag: publishes the scaled sensor measures of the magnetic field
-- /microstrain_3dmgx2_imu/imu/data_no_grab: publishes the scaled sensor measures of the acceleration without gravity component, angular velocity, and orientation.
+- /imu/data: publishes the scaled sensor measures of the acceleration, angular velocity, and orientation.
+- /mag: publishes the scaled sensor measures of the magnetic field
+- /imu/data_no_grab: publishes the scaled sensor measures of the acceleration without gravity component, angular velocity, and orientation. Only available in angle mode.
+- /euler: publishes the euler angles (roll, pitch and yaw) in degrees. Only available in angle mode. 
 
    Althought the IMU can be in different measurement type, the topics are the same and publish the same data, only chage how the sensor obtain that data. When the orientation
    is not available, the identity quaternion is published.
@@ -54,15 +53,16 @@ Different node services in order to be able to use all IMU functionalities
     - a: Angle mode. Returns angular velocity, linear acceleration, magnetic field and the angles (roll, pitch and yaw). In this mode a Kalman Filter is used to filter the signal.
     - c: Scaled Mode. Returns angular velocity, linear acceleration and magnetic field. This mode corrects the measurements.
     - r: Voltage mode. Returns angular velocity, linear acceleration and magnetic field. The data are raw, uncorrected and uncalibrated.
-- calibrate: allows to send calibration commands.
-    Usage: calibrate [command]. Commands:
+- calibrateCommnad: allows to send calibration commands.
+    Usage: calibrateCommnad [command]. Commands:
     - s: starts calibration mode. Stops the other modes (continuous or polling). While the calibration is active the other modes do not work, it is necessary to stop the calibration.
     - u: stops calibration mode. The message mode active after it is polling mode.
     - h: clear hard iron calibration data
     - t: clear soft iron calibration data
-- set_baudrate: allows to use the automatic IMU baud rate setting functionality. 
-    Usage: set_baudrate [baudrate]
-Note: does not work as well as it should because the IMU make a response but the baudrate not change.
+    - poll: activate poll mode and polls the imu. 
+    - continuous: activate continous mode.
+    - start_calibrate: starts calibration mode (send the commands of calibrateCommnad service). 
+    - stop_calibrate: stops calibration mode and return the IMU to the prevoius state. 
 - status: returns IMU status, measurement and communication modes enabled.
     Usage: status
 - broadcast_ft: allows to enable and disable the broadcasting of the IMU reference
@@ -85,6 +85,7 @@ The node can be configured with different parameters that allow users to use the
 - message_mode: Allows the IMU to publish the data continuously or pooling. To pool data see the services.
     - P: Polling mode. If continuous mode is active, stops it and activates polling mode. The G command is used to poll packets.
     - C: Continuous mode. Returns data packets at a frequency of 60 Hz.
+- euler: Creates the /euler topic to publis euler angles in degrees. Only available in angle mode.
 
 The file imu_params.yaml contains different interesting matrices. The covariance matrices are calculated by obtaining data with the IMU immobile.
 - tf_translation: translation vector of the IMU reference frame with respect to the ENU frame called world
@@ -97,7 +98,9 @@ More details in the AHRS400CC-100 documentation.
 
 ## Test
 
-To check the working rate of the IMU it is possible to use the ../diagnostics topic. 
+To check the working rate of the IMU it is possible to use the ../diagnostics topic. A Graphic User Interface (GUI) is available: 
+
+`rosrun rqt_runtime_monitor rqt_runtime_monitor`
 
 To make a node test use: 
 
@@ -106,5 +109,7 @@ To make a node test use:
 or 
 
 `rosservice call /self_test`
+
+with the node runnig. 
 
 with the node runnig. 
