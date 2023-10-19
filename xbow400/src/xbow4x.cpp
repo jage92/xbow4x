@@ -9,7 +9,7 @@
 
 using namespace xbow4x;
 
-XBOW4X::XBOW4X(rclcpp::Logger logger) : logger_(logger), fd(-1)
+XBOW4X::XBOW4X(): fd(-1)
 {
   read_size_ = AHRS_ANGLE_MODE_PACKET_SIZE;
   reading_status_ = false;
@@ -24,7 +24,6 @@ void XBOW4X::openPort(const char *port_name, int baudrate)
 {
   closePort(); // In case it was previously open, try to close it first.
 
-  strcpy(this->port,port_name);
   // Open the port
   fd = open(port_name, O_RDWR | O_SYNC | O_NONBLOCK | O_NOCTTY, S_IRUSR | S_IWUSR );
   if (fd < 0)
@@ -94,15 +93,7 @@ void XBOW4X::closePort()
   if (fd != -1)
   {
     if (reading_status_)
-    {
-      try {
         stopContinousReading();
-
-      } catch (std::exception &e) {
-        // Exceptions here are fine since we are closing anyways
-      }
-    }
-
     if (close(fd) != 0)
       throw "Unable to close serial port; ["+std::string(strerror(errno))+"]";
     fd = -1;
@@ -140,20 +131,14 @@ int XBOW4X::read_data(uint8_t *rep, uint8_t first_byte, int rep_len, int timeout
   skippedbytes = 0;
 
   memset(rep,0,rep_len);
-  RCLCPP_DEBUG(logger_,"antes %x %x %d",rep[0],first_byte,skippedbytes);
+
   while (*rep != first_byte && skippedbytes < MAX_BYTES_SKIPPED)
   {
     read_with_timeout(rep, 1, timeout);
-    if(*rep == 0xFF)
-      RCLCPP_DEBUG(logger_,"ppp aaa %x %d",rep[0],skippedbytes);
-    else
-      RCLCPP_DEBUG(logger_,"ppp %x %d",rep[0],skippedbytes);
+
     skippedbytes++;
-    RCLCPP_DEBUG(logger_,"fin");
     bytes = 1;
   }
-
-  RCLCPP_DEBUG(logger_,"siogue");
 
   // Read the rest of the message:
   while (bytes < rep_len)
@@ -165,8 +150,6 @@ int XBOW4X::read_data(uint8_t *rep, uint8_t first_byte, int rep_len, int timeout
 
     bytes += nbytes;
   }
-  RCLCPP_DEBUG(logger_,"fin2");
-
   return bytes;
 }
 
@@ -206,11 +189,9 @@ string XBOW4X::calibrateCommand(uint8_t command) {
   case 's':
     if(!calibrationModeEnabled) {
       sendCommand('R');
-      RCLCPP_DEBUG(logger_,"Command %c",command);
       send(&command,1);
       read_data(buffer,'S',1);
-      //tcflush(fd, TCIFLUSH);
-      RCLCPP_DEBUG(logger_,"Response %d",buffer[0]);
+
       if(buffer[0]=='S') {
         calibrationModeEnabled=true;
         return "Calibration Mode started";
@@ -223,10 +204,9 @@ string XBOW4X::calibrateCommand(uint8_t command) {
   case 'u':
     if(calibrationModeEnabled) {
       send(&command,1);
-      RCLCPP_DEBUG(logger_,"Command %c",command);
+
       read_data(buffer,'U',1);
-      //tcflush(fd, TCIFLUSH);
-      RCLCPP_DEBUG(logger_,"Response %d",buffer[0]);
+
       if(buffer[0]=='U') {
         calibrationModeEnabled=false;
         return "Calibration Mode stopped";
@@ -240,10 +220,8 @@ string XBOW4X::calibrateCommand(uint8_t command) {
     if(!calibrationModeEnabled) {
       sendCommand('R');
       send(&command,1);
-      RCLCPP_DEBUG(logger_,"Command %c",command);
       read_data(buffer,'H',1);
-      //tcflush(fd, TCIFLUSH);
-      RCLCPP_DEBUG(logger_,"Response %d",buffer[0]);
+
       if(buffer[0]=='H') {
         return "Hard iron calibration cleared";
       }
@@ -256,10 +234,10 @@ string XBOW4X::calibrateCommand(uint8_t command) {
     if(!calibrationModeEnabled) {
       sendCommand('R');
       send(&command,1);
-      RCLCPP_DEBUG(logger_,"Command %c",command);
+
       read_data(buffer,'T',1);
       //tcflush(fd, TCIFLUSH);
-      RCLCPP_DEBUG(logger_,"Response %d",buffer[0]);
+
       if(buffer[0]=='T')
         return "Soft iron calibration cleared";
       throw "Impossible to communicate with the IMU";
@@ -273,12 +251,6 @@ string XBOW4X::calibrateCommand(uint8_t command) {
   }
 }
 
-void XBOW4X::reopenSerialPort() {
-  closePort();
-  fd = -1;
-  openPort(port,baudrate);
-}
-
 MessageMode XBOW4X::getMessageMode() const
 {
   return messageMode;
@@ -288,73 +260,6 @@ MeasurementType XBOW4X::getMeasurementType() const
 {
   return measurementType;
 }
-
-//DO NOT WORK WITH THE IMU
-//string XBOW4X::setBaudrate(u_int32_t baudrate) {
-
-//  string s;
-//  uint8_t command;
-//  uint8_t buffer[100];
-//  int previousBaudrate;
-
-
-//  // Change port settings
-//  struct termios term;
-//  if (tcgetattr(fd, &term) < 0)
-//    throw "Unable to get serial port attributes";
-
-//  cfmakeraw( &term );
-//  if(baudrate != 38400 && baudrate != 115200 && baudrate != 9600)
-//    throw "Incorrect baudrate";
-
-//  sendCommand('R');
-//  command = 'b';
-//  send(&command,1);
-//  RCLCPP_DEBUG(logger_,"Command %c",command);
-//  read_data(buffer,'B',1);
-//  //tcflush(fd, TCIFLUSH);
-//  RCLCPP_DEBUG(logger_,"Response %c",buffer[0]);
-
-//  if(buffer[0]=='B') {
-//    previousBaudrate = this->baudrate;
-//    this->baudrate=baudrate;
-////    if(baudrate == 38400) {
-////      cfsetispeed(&term, B38400);
-////      cfsetospeed(&term, B38400);
-////    }
-////    else if(baudrate == 115200) {
-////      cfsetispeed(&term, B115200);
-////      cfsetospeed(&term, B115200);
-////    }
-////    else if(baudrate == 9600) {
-////      cfsetispeed(&term, B9600);
-////      cfsetospeed(&term, B9600);
-////    }
-
-//    reopenSerialPort();
-
-//    command = 'a';
-//    send(&command,1);
-//    RCLCPP_DEBUG(logger_,"Command %c",command);
-//    read_data(buffer,'A',1);
-//    //tcflush(fd, TCIFLUSH);
-//    RCLCPP_DEBUG(logger_,"Response %c",buffer[0]);
-
-//    if(buffer[0]=='A') {
-//      sendCommand('R');
-//      sendCommand((uint8_t)measurementType);
-//      sendCommand((uint8_t)messageMode);
-//      return "Baudrate changed";
-//    }
-//    else {
-//      this->baudrate=previousBaudrate;
-//      reopenSerialPort();
-//      throw "It is not possible to set a new baudrate";
-//    }
-//  }
-//  else
-//    throw"Impossible to communicate with the IMU";
-//}
 
 string XBOW4X::sendCommand(uint8_t command) {
   uint8_t buffer[100];
@@ -370,29 +275,19 @@ string XBOW4X::sendCommand(uint8_t command) {
       if(reading_status_) {
         stopContinousReading();
       }
-      RCLCPP_DEBUG(logger_,"Command %c",command);
       send(&command,1);
       read_data(buffer,'H',1);
-      //tcflush(fd, TCIFLUSH);
-      RCLCPP_DEBUG(logger_,"Response %d",buffer[0]);
-      //measurementType = MeasurementType::None;
+
       num=100;
       while(buffer[0]!='H') {
-        //SEARCH PING
-        //            RCLCPP_DEBUG(logger_,"Command %c",command);
-        //uint8_t buff ='G';
+
         uint8_t buff ='P';
         send(&buff,1); //STOP Continuous mode
-        //            messageMode = MessageMode::Poll;
-        //reopenSerialPort();
-        tcflush(fd, TCIFLUSH);
-        RCLCPP_DEBUG(logger_,"Command %c",command);
+
         //PING
         send(&command,1);
         read_data(buffer,'H',1);
-        //tcflush(fd, TCIFLUSH);
-        RCLCPP_DEBUG(logger_,"Response %d",buffer[0]);
-        //tcflush(fd, TCIFLUSH);
+
         if(!(--num))
           throw"It is not possible to communicate with the IMU";
       }
@@ -403,11 +298,9 @@ string XBOW4X::sendCommand(uint8_t command) {
         sendCommand('R');
         flag=true;
       }
-      RCLCPP_DEBUG(logger_,"Command %c",command);
       send(&command,1);
       read_data(buffer,'R',1);
-      //tcflush(fd, TCIFLUSH);
-      RCLCPP_DEBUG(logger_,"Response %c",buffer[0]);
+
       if(buffer[0]=='R') {
         measurementType = MeasurementType::VoltageMode;
         read_size_ = AHRS_VOLTAGE_MODE_PACKET_SIZE;
@@ -423,11 +316,10 @@ string XBOW4X::sendCommand(uint8_t command) {
         sendCommand('R');
         flag=true;
       }
-      RCLCPP_DEBUG(logger_,"Command %c",command);
+
       send(&command,1);
       read_data(buffer,'C',1);
-      //tcflush(fd, TCIFLUSH);
-      RCLCPP_DEBUG(logger_,"Response %c",buffer[0]);
+
       if(buffer[0]=='C') {
         measurementType = MeasurementType::ScaledMode;
         read_size_ = AHRS_SCALED_MODE_PACKET_SIZE;
@@ -443,15 +335,14 @@ string XBOW4X::sendCommand(uint8_t command) {
         sendCommand('R');
         flag=true;
       }
-      RCLCPP_DEBUG(logger_,"Command %c",command);
+
       send(&command,1);
       read_data(buffer,'A',1);
-      //tcflush(fd, TCIFLUSH);
-      RCLCPP_DEBUG(logger_,"Response %c",buffer[0]);
+
       if(buffer[0]=='A') {
         measurementType = MeasurementType::AngleMode;
         read_size_ = AHRS_ANGLE_MODE_PACKET_SIZE;
-        RCLCPP_DEBUG(logger_,"Angle Mode enabled");
+
         if(flag)
           sendCommand('C');
         return "Angle Mode enabled";
@@ -464,21 +355,18 @@ string XBOW4X::sendCommand(uint8_t command) {
         sendCommand('R');
         flag=true;
       }
-      RCLCPP_DEBUG(logger_,"Command %c",command);
       send(&command,1);
       //tcflush(fd, TCIFLUSH);
       messageMode = MessageMode::Poll;
       return "Poll Mode enabled";
 
     case 'C': //Continuous Mode
-      RCLCPP_DEBUG(logger_,"Command %c",command);
       send(&command,1);
       if(measurementType == MeasurementType::None) {
         throw "No measurement mode selected";
       }
       startContinuousReading();
       if(reading_status_) {
-        RCLCPP_DEBUG(logger_,"%s","Starting continuous mode");
         return "Starting continuous mode";
       }
       else {
@@ -488,7 +376,6 @@ string XBOW4X::sendCommand(uint8_t command) {
       if(reading_status_) {
         sendCommand('R');
       }
-      RCLCPP_DEBUG(logger_,"Command %c",command);
       send(&command,1);
       if(measurementType == MeasurementType::None) {
         throw "No measurement mode selected";
@@ -499,12 +386,10 @@ string XBOW4X::sendCommand(uint8_t command) {
 
     case 'v': //Query DMU Version
       if(!reading_status_) {
-        RCLCPP_DEBUG(logger_,"Command %c",command);
         send(&command,1);
         size = read_data(buffer,0xFF,26);
-        //tcflush(fd, TCIFLUSH);
         strncpy(temp,(char *)&buffer[1],size-1);
-        RCLCPP_DEBUG(logger_,"Response %s",temp);
+
         if(strlen(temp)==24) {
           return string(temp);
         }
@@ -523,7 +408,7 @@ string XBOW4X::sendCommand(uint8_t command) {
                                                 (unsigned char)(buffer[2]) << 16 |
                                                                               (unsigned char)(buffer[3]) << 8 |
                                                                                                             (unsigned char)(buffer[4]));
-        RCLCPP_DEBUG(logger_,"Response %d",num);
+
 
         if(size == 6)
           return to_string(num);

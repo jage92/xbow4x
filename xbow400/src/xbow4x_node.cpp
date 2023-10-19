@@ -121,7 +121,6 @@ public:
 
     imu_pub = this->create_publisher<sensor_msgs::msg::Imu>("imu/data", 1);
     mag_pub = this->create_publisher<sensor_msgs::msg::MagneticField>("mag", 1);
-    imu_no_grab_pub = this->create_publisher<sensor_msgs::msg::Imu>("imu/data_no_grab", 1);
     br = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     this->declare_parameter("port", "/dev/ttyUSB0");
@@ -148,6 +147,10 @@ public:
     //Angle Mode: a Scaled Mode: c Voltage Mode: r
     this->declare_parameter("measurement_mode","a"); //AngleMode
     measurementMode = static_cast<xbow4x::MeasurementType>(this->get_parameter("measurement_mode").get_parameter_value().get<string>().c_str()[0]);
+
+    if(measurementMode == xbow4x::MeasurementType::AngleMode)
+      imu_no_grab_pub = this->create_publisher<sensor_msgs::msg::Imu>("imu/data_no_grab", 1);
+
 
     //Continuous Mode: C Poll Mode: P Poll/Stop Continuous Mode: G
     this->declare_parameter("message_mode","C"); //Continuous Mode
@@ -243,7 +246,7 @@ public:
 
 //    this->get_logger().set_level(rclcpp::Logger::Level::Debug);
 
-    xbow = std::make_shared<xbow4x::XBOW4X>(this->get_logger());
+    xbow = std::make_shared<xbow4x::XBOW4X>();
 
     try{
       xbow->openPort(port_name.c_str(), baudrate);
@@ -609,7 +612,7 @@ public:
   }
 
   /**
-     * @brief calibrationStatus Check the status of the imu calibration
+     * @brief biasStatus Check the status of the imu capture bias
      * @param status node status
      */
   void biasStatus(diagnostic_updater::DiagnosticStatusWrapper& status)
@@ -704,6 +707,7 @@ public:
     tf2::Quaternion q(0.0,0.0,0.0,1.0);
     double angularRate[3],accel[3],magnetic[3];
     xbow4x::ImuData data;
+    rclcpp::Time time;
 
     if(!imu_started) {
       imu_started = true;
@@ -723,7 +727,7 @@ public:
     }
     temperature = data.boardtemp;
 
-    data.receive_time = clock.now();
+    time = clock.now();
     angularRate[X] = data.rollrate;
     angularRate[Y] = data.pitchrate;
     angularRate[Z] = data.yawrate;
@@ -766,7 +770,7 @@ public:
     }
 
     if(is_initialized) {
-      imu_msg.header.stamp = data.receive_time;
+      imu_msg.header.stamp = time;
       imu_msg.header.frame_id = frame_id;
       imu_msg.angular_velocity.x = angularRate[X] - ang_vel_mean[X];
       imu_msg.angular_velocity.y = angularRate[Y] - ang_vel_mean[Y];
@@ -775,7 +779,7 @@ public:
       imu_msg.linear_acceleration.y = accel[Y];
       imu_msg.linear_acceleration.z = accel[Z];
       imu_msg.orientation = tf2::toMsg(q);
-      msgmag.header.stamp = data.receive_time;
+      msgmag.header.stamp = time;
       msgmag.header.frame_id = frame_id;
       msgmag.magnetic_field.x = magnetic[X];
       msgmag.magnetic_field.y = magnetic[Y];
@@ -785,7 +789,7 @@ public:
       mag_pub->publish(msgmag);
 
       if(measurementMode==xbow4x::MeasurementType::AngleMode) {
-        imu_msg_no_grab.header.stamp = data.receive_time;
+        imu_msg_no_grab.header.stamp = time;
         imu_msg_no_grab.header.frame_id = frame_id;
         imu_msg_no_grab.angular_velocity.x = angularRate[X] - ang_vel_mean[X];
         imu_msg_no_grab.angular_velocity.y = angularRate[Y] - ang_vel_mean[Y];
@@ -803,7 +807,7 @@ public:
           eulerMsg.pitch=data.pitch*180/M_PI;
           eulerMsg.yaw=data.yaw*180/M_PI;
           eulerMsg.header.frame_id = frame_id;
-          eulerMsg.header.stamp = data.receive_time;
+          eulerMsg.header.stamp = time;
 
           euler_pub->publish(eulerMsg);
         }
@@ -811,7 +815,7 @@ public:
 
         //          RCLCPP_INFO(this->get_logger(),"%lf %lf %lf",data.ax,data.ay,data.az);
         if(broadcats_tf) {
-          transformStamped.header.stamp = data.receive_time;
+          transformStamped.header.stamp = time;
           transformStamped.header.frame_id = base_frame;
           transformStamped.child_frame_id = frame_id;
           transformStamped.transform.translation.x = tf_translation[X];

@@ -1,42 +1,3 @@
-/*!
- * \file include/xbow4x.h
- * \author David Hodo <david.hodo@gmail.com>
- * \version 0.1
- *
- * \section LICENSE
- *
- * The BSD License
- *
- * Copyright (c) 2011 David Hodo
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
- *
- * \section DESCRIPTION
- *
- * This provides an interface for the Crossbow AHRS400CC-100 inertial measurement unit.
- *
- * This library depends on CMake-2.4.6 or later: http://www.cmake.org/
- * This library depends on Serial: https://github.com/wjwwood/serial
- *
- */
-
-
 #ifndef XBOW4X_H
 #define XBOW4X_H
 
@@ -55,14 +16,9 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <math.h>
 
 using namespace std;
-
-// Serial Header
-//#include "serial/serial.h"
-
-// ROS Header
-#include <rclcpp/rclcpp.hpp>
 
 #define MAX_BYTES_SKIPPED  100
 
@@ -74,7 +30,6 @@ enum class MessageMode{None,Continous='C',Poll='P'};
 //accelerations and turning rates
 struct ImuData {
     int datatype; //1 for accels and turning rates, 2 for delta v's and delta thetas.
-    rclcpp::Time receive_time;
     double roll; //1:rad 2:rad
     double pitch; //1:rad 2:rad
     double yaw; //1:rad 2:rad
@@ -104,7 +59,7 @@ struct ImuData {
 class XBOW4X{
 public:
 
-  XBOW4X(rclcpp::Logger logger);
+  XBOW4X();
 
   ~XBOW4X(){};
 
@@ -112,18 +67,15 @@ public:
      * Connects to the XBOW4X IMU given a serial port.
      *
      * @param port Defines which serial port to connect to in serial mode.
-     * Examples: Linux - "/dev/ttyS0" Windows - "COM1"
      *
      * @throws ConnectionFailedException connection attempt failed.
      * @throws UnknownErrorCodeException unknown error code returned.
      */
-    //void connect(std::string port, int baudrate=38400, long timeout=50);
     void openPort(const char *port_name, int baudrate);
 
    /*!
     * Disconnects from the serial port
     */
-    //void disconnect();
     void closePort();
 
     /*!
@@ -144,15 +96,6 @@ public:
      */
     string calibrateCommand(uint8_t command);
 
-//DO NOT WORK, IMU DOES NOT REPLY
-//    /*!
-//     * Send a command to the IMU to calibrate the magnetometer
-//     * Commands in the Crossbow documentation
-//     *
-//     * \param command string of a one character that contains the command to be send
-//     * \param returnMessage message returned to show to the user
-//     */
-//    string setBaudrate(u_int32_t baudrate);
     MeasurementType getMeasurementType() const;
 
     MessageMode getMessageMode() const;
@@ -202,12 +145,6 @@ private:
       */
      void parseVoltageMode(unsigned char *packet);
 
-     /*!
-      * Reopens the serial port and cleans it
-      *
-      */
-     void reopenSerialPort();
-
      /**
       * @brief send sends data to the IMU throw serial port
       * @param cmd data to send
@@ -247,8 +184,6 @@ private:
     int baudrate; //! Serial port daudrate in use
     long timeout; //! Serial port timeout un use
     bool calibrationModeEnabled; //! Indicates if calibration mode is started
-    rclcpp::Logger logger_;
-    //rclcpp::Clock clock;
 
     //! The file descriptor
     int fd;
@@ -258,4 +193,3 @@ private:
 } // end namespace
 
 #endif
-
